@@ -28,12 +28,14 @@ struct config_parser {
 
 static struct conf config = {
     .listening_port = 27015,
-    .listening_ip_addr = "127.0.0.1"
+    .listening_ip_addr = "127.0.0.1",
+    .max_epoll_queue = 1024
 };
 
 __attribute__((unused))static struct config_parser parser[] = {
     {"listening_port", ct_int, &config.listening_port},
-    {"listening_ip_addr", ct_string, config.listening_ip_addr}
+    {"listening_ip_addr", ct_string, config.listening_ip_addr},
+    {"max_epoll_queue", ct_int, &config.max_epoll_queue}
 };
 
 static bool read_config(const char *cfg_file);

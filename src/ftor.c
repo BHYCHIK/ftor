@@ -1,5 +1,6 @@
 #include "config.h"
 #include "mempool.h"
+#include "network.h"
 
 #include <stdio.h>
 
@@ -12,5 +13,8 @@ int main() {
     void *c = ftor_malloc(pool, 30);
     printf("%p %p %p %p\n", a, b, c, z);
     ftor_free(pool);
+    ftor_reactor_init();
+    ftor_start_server();
+    ftor_reactor();
     return 0;
 }
