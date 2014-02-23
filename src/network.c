@@ -8,8 +8,11 @@
 #include "network.h"
 #include "config.h"
 #include "events.h"
+#include "socks.h"
 
 #include <stdio.h>
+#include <errno.h>
+#include <string.h>
 
 static int epoll_fd;
 
@@ -59,8 +62,23 @@ static void setnonblock(int fd) {
 }
 
 static int client_connecton_accepter(struct ftor_event *event) {
-    int f = accept(event->socket_fd, NULL, NULL);
-    close(f);
+    struct ftor_context *context = ftor_create_context();
+    int f = accept(event->socket_fd, &context->client_addr, &context->client_addr_len);
+    if (f == -1) {
+        printf("BAD CONNECTION err=%s\n", strerror(errno));
+        ftor_del_context(context);
+        return -1;
+    }
+    context->incoming_fd = f;
+
+    struct ftor_event *client_event = ftor_malloc(context->pool, sizeof(struct ftor_event));
+    client_event->socket_fd = f;
+    client_event->context = context;
+    client_event->read_handler = ftor_socks_get_header;
+    client_event->write_handler = NULL;
+
+    add_event_to_reactor(client_event);
+
     printf("connection accepted\n");
     return 0;
 }
