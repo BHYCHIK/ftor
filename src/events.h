@@ -36,7 +36,7 @@ struct ftor_context {
     struct mem_pool *pool;
     enum ftor_state state;
     struct sockaddr_in client_addr;
-    size_t client_addr_len;
+    socklen_t client_addr_len;
     unsigned char *client_recv_buffer;
     size_t client_recv_buffer_size;
     size_t client_recv_buffer_pos;

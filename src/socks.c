@@ -49,7 +49,7 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
 int ftor_socks_get_header(struct ftor_event *event) {
     struct ftor_context *context = event->context;
     ssize_t readed = ftor_read_data_to_buffer(event->socket_fd, context->client_recv_buffer, &context->client_recv_buffer_pos, STABLE_HEADER_LEN - context->client_recv_buffer_pos, NULL, false);
-    printf("readed=%d\n", readed);
+    printf("readed=%zd\n", readed);
     if (context->client_recv_buffer_pos < STABLE_HEADER_LEN) return 0;
     context->peer_port = ntohs(*((uint16_t *)(context->client_recv_buffer + 2)));
     context->peer_address = ntohl(*((uint32_t *)(context->client_recv_buffer + 4)));
