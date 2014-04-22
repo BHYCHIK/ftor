@@ -11,6 +11,7 @@
 #include "config.h"
 
 #define DEFAULT_CONFIG_FILE "/etc/ftor.conf"
+#define STRSZ(str) (str),(sizeof(str)-1)
 
 static char config_file[1026] = DEFAULT_CONFIG_FILE;
 static bool configured = false;
@@ -29,10 +30,10 @@ struct config_parser {
 static struct conf config = {
     .listening_port = 27015,
     .listening_ip_addr = "127.0.0.1",
-    .max_epoll_queue = 1024
+    .max_epoll_queue = 64
 };
 
-__attribute__((unused))static struct config_parser parser[] = {
+static struct config_parser parser[] = {
     {"listening_port", ct_int, &config.listening_port},
     {"listening_ip_addr", ct_string, config.listening_ip_addr},
     {"max_epoll_queue", ct_int, &config.max_epoll_queue}
@@ -66,7 +67,10 @@ static void parse_config_line(const char *key, const char *value) {
 
 static bool read_config(const char *cfg_file) {
     FILE *f = fopen(cfg_file, "rb");
-    if (f == NULL) return false;
+    if (f == NULL) {
+        write(STDERR_FILENO, STRSZ("Cannot read config file\n"));
+        exit(0);
+    }
     char buf[4096];
     while (!feof(f)) {
         if (!fgets(buf, sizeof(buf), f)) continue;

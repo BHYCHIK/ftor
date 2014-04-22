@@ -26,6 +26,15 @@ static int process_event(struct ftor_event *event, int happend) {
     if (event->write_handler && (happend & EPOLLOUT)) {
         event->write_handler(event);
     }
+    if (happend & EPOLLRDHUP) {
+        
+    }
+    if (happend & EPOLLHUP) {
+        
+    }
+    if (happend & EPOLLERR) {
+        
+    }
     return 0;
 }
 
@@ -33,16 +42,17 @@ void ftor_reactor() {
     struct conf *config = get_conf();
     struct epoll_event events[config->max_epoll_queue];
     while (running_server) {
-        int nfds = epoll_wait(epoll_fd, events, config->max_epoll_queue, -1);
+        int nfds = epoll_wait(epoll_fd, events, config->max_epoll_queue, -1); //TODO: ADD timeout because of cache
         for (int i = 0; i < nfds; ++i) {
             process_event((struct ftor_event *)events[i].data.ptr, events[i].events);
         }
     }
 }
 
+//TODO: add events arg
 int add_event_to_reactor(struct ftor_event *event_to_add) {
     struct epoll_event listenev;
-    listenev.events = EPOLLIN | EPOLLOUT | EPOLLPRI | EPOLLET;
+    listenev.events = EPOLLIN | EPOLLOUT;
     listenev.data.ptr = event_to_add;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_to_add->socket_fd, &listenev) < 0) {
         printf("Epoll fd add");
@@ -73,7 +83,7 @@ static int client_connecton_accepter(struct ftor_event *event) {
         ftor_del_context(context);
         return -1;
     }
-    setnonblock(f);
+    setnonblock(f); //TODO: try to reduce syscalls num (accept4)
     context->incoming_fd = f;
 
     struct ftor_event *client_event = ftor_malloc(context->pool, sizeof(struct ftor_event));
