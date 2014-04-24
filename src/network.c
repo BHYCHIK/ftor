@@ -66,13 +66,11 @@ void ftor_reactor_init() {
     epoll_fd = epoll_create(config->max_epoll_queue);
 }
 
-static void setnonblock(int fd) {
+void setnonblock(int fd) {
     int f;
     if ((f = fcntl(fd, F_GETFL, 0)) == -1 || fcntl(fd, F_SETFL, f | O_NONBLOCK) == -1) {
         exit(EXIT_FAILURE);
     }
-
-    return;
 }
 
 static int client_connecton_accepter(struct ftor_event *event) {
@@ -91,6 +89,8 @@ static int client_connecton_accepter(struct ftor_event *event) {
     client_event->context = context;
     client_event->read_handler = ftor_socks_get_header;
     client_event->write_handler = NULL;
+
+    context->client_event = client_event;
 
     add_event_to_reactor(client_event);
 

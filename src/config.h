@@ -7,6 +7,8 @@
 struct conf {
     int listening_port;
     char listening_ip_addr[CONF_STR_MAX_SIZE];
+    char designator_ip_addr[CONF_STR_MAX_SIZE];
+    int designator_port;
     int max_epoll_queue;
 };
 

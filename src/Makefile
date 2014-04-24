@@ -23,6 +23,6 @@ events.o: events.c events.h
 network.o: network.c network.h config.h
 	$(CC) ${CFLAGS} -c network.c
 
-socks.o: socks.c socks.h
+socks.o: socks.c socks.h config.h
 	$(CC) ${CFLAGS} -c socks.c
 socks.h: events.h
