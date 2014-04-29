@@ -12,6 +12,8 @@ struct ftor_context *ftor_create_context() {
     context->client_recv_buffer_pos = 0;
     context->client_addr_len = sizeof(context->client_addr);
     context->client_event = NULL;
+    context->chain_domain_name1 = NULL;
+    context->chain_domain_name2 = NULL;
     memset(&context->client_addr, 0, context->client_addr_len);
     return context;
 }

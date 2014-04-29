@@ -10,14 +10,14 @@
 #include <errno.h>
 
 #define STABLE_HEADER_LEN 8
-
+/*
 static int read_request(struct ftor_event *event) {
     struct ftor_context *context = event->context;
     ftor_read_data_to_buffer(event->socket_fd, context->client_recv_buffer, &context->client_recv_buffer_pos, context->client_recv_buffer_size, NULL, true);
     close(event->socket_fd);
     return 0;
 }
-/*
+
 static int send_reply(struct ftor_event *event) {
     struct ftor_context *context = event->context;
     unsigned char reply[8];
@@ -38,12 +38,18 @@ static int ftor_read_designation(struct ftor_event *event) {
     printf("designation started\n");
     struct ftor_context *context = event->context;
     ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size);
-    if (context->client_recv_buffer_pos < 2) return 0;
-    uint16_t data_size = ntohs(*(uint16_t *)context->client_recv_buffer);
+    if (context->client_recv_buffer_pos < 4) return 0;
+    uint32_t data_size = ntohl(*(uint32_t *)context->client_recv_buffer);
     if (context->client_recv_buffer_pos < data_size) return 0;
+    uint16_t domain1_len = ntohs(*(uint16_t *)(context->client_recv_buffer + 4));
+    uint16_t domain2_len = ntohs(*(uint16_t *)(context->client_recv_buffer + 6));
+    assert((int)data_size == 4 + 2 + 2 + domain1_len + domain2_len);
     close(event->socket_fd);
+    context->chain_domain_name1 = ftor_malloc(context->pool, domain1_len + 1);
+    context->chain_domain_name2 = ftor_malloc(context->pool, domain2_len + 1);
+    snprintf(context->chain_domain_name1, domain1_len + 1, "%*s", domain1_len, context->client_recv_buffer + 8);
+    snprintf(context->chain_domain_name2, domain2_len + 1, "%*s", domain2_len, context->client_recv_buffer + 8 + domain1_len);
     /*TODO: make free event or add to context allocator */
-    request_for_servers_chain(context);
     printf("designation ended\n");
     return 0;
 }
@@ -64,7 +70,7 @@ static int designator_connected(struct ftor_event *event) {
     }
 
     printf("Connection established with designator!");
-    event->read_handler = read_request;
+    event->read_handler = ftor_read_designation;
     event->write_handler = NULL;
     return 0;
 }

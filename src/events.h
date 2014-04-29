@@ -43,6 +43,8 @@ struct ftor_context {
     uint16_t peer_port;
     uint32_t peer_address;
     struct ftor_event *client_event;
+    char *chain_domain_name1;
+    char *chain_domain_name2;
 };
 
 struct ftor_context *ftor_create_context();
