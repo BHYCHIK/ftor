@@ -7,6 +7,7 @@ struct ftor_context *ftor_create_context() {
     struct ftor_context *context = malloc(sizeof(struct ftor_context));
     context->state = conn_none_state;
     context->incoming_fd = -1;
+    context->terminated = false;
     context->pool = ftor_pool_get();
     context->client_recv_buffer = malloc(RECV_BUFFER_START_SIZE);
     context->client_recv_buffer_size = RECV_BUFFER_START_SIZE;

@@ -45,6 +45,7 @@ struct ftor_event {
 
 struct ftor_context {
     int incoming_fd;
+    bool terminated;
     struct mem_pool *pool;
     enum ftor_state state;
     struct sockaddr_in client_addr;
