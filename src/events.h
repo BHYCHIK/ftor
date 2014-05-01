@@ -9,6 +9,10 @@
 
 #define RECV_BUFFER_START_SIZE 1 /*(1 * 1024 * 1024) */
 
+#define EVENT_RESULT_CONT 0
+#define EVENT_RESULT_CLOSE 1
+#define EVENT_RESULT_CONTEXT_CLOSE 2
+
 struct ftor_event;
 struct ftor_context;
 
