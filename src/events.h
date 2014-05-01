@@ -57,6 +57,10 @@ struct ftor_context {
     struct ftor_event *client_event;
     char *chain_domain_name1;
     char *chain_domain_name2;
+    char *chain_pubkey1;
+    char *chain_pubkey2;
+    uint32_t chain_ip1;
+    uint32_t chain_ip2;
     int events_num;
 };
 

@@ -14,6 +14,10 @@ struct ftor_context *ftor_create_context() {
     context->client_event = NULL;
     context->chain_domain_name1 = NULL;
     context->chain_domain_name2 = NULL;
+    context->chain_pubkey1 = NULL;
+    context->chain_pubkey2 = NULL;
+    context->chain_ip1 = 0;
+    context->chain_ip2 = 0;
     context->events_num = 0;
     memset(&context->client_addr, 0, context->client_addr_len);
     return context;

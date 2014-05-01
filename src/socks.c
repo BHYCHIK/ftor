@@ -39,15 +39,44 @@ static int send_reply(struct ftor_event *event) {
     pos += size; \
 }
 
+static int ftor_read_resolver_answer(struct ftor_event *event) {
+    printf("dns reply started\n");
+    struct ftor_context *context = event->context;
+    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
+    if (event->recv_buffer_pos < 4) return EVENT_RESULT_CONT;
+    uint32_t data_size = ntohl(*(uint32_t *)event->recv_buffer);
+    if (event->recv_buffer_pos < data_size) return EVENT_RESULT_CONT;
+
+    uint8_t error_code = *((uint8_t *)(event->recv_buffer + 4));
+    if (error_code != RESOLVER_ERRCODE_OK) {
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+    context->chain_ip1 = ntohl(*(uint32_t *)(event->recv_buffer + 5));
+    context->chain_ip2 = ntohl(*(uint32_t *)(event->recv_buffer + 9));
+    uint16_t pubkey1_len = ntohs(*(uint16_t *)(event->recv_buffer + 13));
+    uint16_t pubkey2_len = ntohs(*(uint16_t *)(event->recv_buffer + 15));
+    if ((int)data_size != 17 + pubkey1_len + pubkey2_len) {
+        printf("Bad reply from resolver\n");
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    context->chain_pubkey1 = ftor_malloc(context->pool, pubkey1_len + 1);
+    context->chain_pubkey2 = ftor_malloc(context->pool, pubkey2_len + 1);
+    snprintf(context->chain_pubkey1, pubkey1_len + 1, "%*s", pubkey1_len, event->recv_buffer + 17);
+    snprintf(context->chain_pubkey2, pubkey2_len + 1, "%*s", pubkey2_len, event->recv_buffer + 17 + pubkey1_len);
+    printf("dns reply ended\n");
+    return EVENT_RESULT_CLOSE;
+}
+
 static int send_request_to_resolver(struct ftor_event *event) {
     ssize_t bytes_sended = send(event->socket_fd, event->send_buffer, event->send_buffer_pos, MSG_DONTWAIT);
     printf("sended %zd bytes to resolver\n", bytes_sended);
     if ((size_t)bytes_sended == event->send_buffer_pos) {
-        event->read_handler = NULL;
+        event->read_handler = ftor_read_resolver_answer;
         event->write_handler = NULL;
-        return EVENT_RESULT_CLOSE;
     }
     memmove(event->send_buffer, event->send_buffer + bytes_sended, event->send_buffer_pos - bytes_sended);
+    event->send_buffer_pos -= bytes_sended;
     return EVENT_RESULT_CONT;
 }
 
@@ -78,13 +107,13 @@ static int resolver_connected(struct ftor_event *event) {
     socklen_t result_len = sizeof(result);
     if (getsockopt(event->socket_fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0) {
         // error, fail somehow, close socket
-        assert(0);
+        printf("%d cannot connect to resolver\n", __LINE__);
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
 
     if (result != 0) {
         // connection failed; error code is in 'result'
-        assert(0);
+        printf("%d cannot connect to resolver\n", __LINE__);
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
 
@@ -128,7 +157,10 @@ static int ftor_read_designation(struct ftor_event *event) {
     if (event->recv_buffer_pos < data_size) return EVENT_RESULT_CONT;
     uint16_t domain1_len = ntohs(*(uint16_t *)(event->recv_buffer + 4));
     uint16_t domain2_len = ntohs(*(uint16_t *)(event->recv_buffer + 6));
-    assert((int)data_size == 4 + 2 + 2 + domain1_len + domain2_len);
+    if ((int)data_size == 4 + 2 + 2 + domain1_len + domain2_len) {
+        printf("Bad reply from designator\n");
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
     context->chain_domain_name1 = ftor_malloc(context->pool, domain1_len + 1);
     context->chain_domain_name2 = ftor_malloc(context->pool, domain2_len + 1);
     snprintf(context->chain_domain_name1, domain1_len + 1, "%*s", domain1_len, event->recv_buffer + 8);
@@ -143,13 +175,13 @@ static int designator_connected(struct ftor_event *event) {
     socklen_t result_len = sizeof(result);
     if (getsockopt(event->socket_fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0) {
         // error, fail somehow, close socket
-        assert(0);
+        printf("%d: cant connect to designator\n", __LINE__);
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
 
     if (result != 0) {
         // connection failed; error code is in 'result'
-        assert(0);
+        printf("%d: cant connect to designator\n", __LINE__);
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
 
@@ -172,6 +204,7 @@ static int request_for_servers_chain(struct ftor_context *context) {
     setnonblock(designator_socket);
 
     if (connect(designator_socket, (struct sockaddr *)&designator_addr, sizeof(designator_addr)) < 0 && errno != EINPROGRESS) {
+        printf("%d: cant connect to designator\n", __LINE__);
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
 
