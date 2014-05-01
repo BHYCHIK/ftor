@@ -74,7 +74,7 @@ ssize_t ftor_read_all(int fd, unsigned char **buf, size_t *pos, size_t *alloced,
             break;
         }
         if (bytes_readed < 0) {
-            if (errno == EAGAIN) {
+            if (errno != EAGAIN) {
                 *error = true;
             }
             break;
