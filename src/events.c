@@ -14,8 +14,40 @@ struct ftor_context *ftor_create_context() {
     context->client_event = NULL;
     context->chain_domain_name1 = NULL;
     context->chain_domain_name2 = NULL;
+    context->events_num = 0;
     memset(&context->client_addr, 0, context->client_addr_len);
     return context;
+}
+
+struct ftor_event *ftor_create_event(int fd, struct ftor_context *context) {
+    struct ftor_event *event = malloc(sizeof(struct ftor_event));
+    event->context = context;
+    if (context) ++context->events_num;
+    event->socket_fd = fd;
+    event->read_handler = NULL;
+    event->write_handler = NULL;
+
+    event->recv_buffer = malloc(RECV_BUFFER_START_SIZE);
+    event->recv_buffer_size = RECV_BUFFER_START_SIZE;
+    event->recv_buffer_pos = 0;
+
+    event->send_buffer = malloc(RECV_BUFFER_START_SIZE);
+    event->send_buffer_size = RECV_BUFFER_START_SIZE;
+    event->send_buffer_pos = 0;
+
+    return event;
+}
+
+void ftor_del_event(struct ftor_event *event) {
+    if (event->socket_fd > -1) close(event->socket_fd);
+    if (event->context) {
+        if ((--event->context->events_num) == 0) {
+            ftor_del_context(event->context);
+        }
+    }
+    free(event->send_buffer);
+    free(event->recv_buffer);
+    free(event);
 }
 
 void ftor_del_context(struct ftor_context *context) {

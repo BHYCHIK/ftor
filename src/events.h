@@ -29,6 +29,14 @@ struct ftor_event {
     ftor_handler read_handler;
     ftor_handler write_handler;
     int socket_fd;
+
+    unsigned char *recv_buffer;
+    size_t recv_buffer_size;
+    size_t recv_buffer_pos;
+
+    unsigned char *send_buffer;
+    size_t send_buffer_size;
+    size_t send_buffer_pos;
 };
 
 struct ftor_context {
@@ -45,10 +53,13 @@ struct ftor_context {
     struct ftor_event *client_event;
     char *chain_domain_name1;
     char *chain_domain_name2;
+    int events_num;
 };
 
 struct ftor_context *ftor_create_context();
 void ftor_del_context(struct ftor_context *context);
 ssize_t ftor_read_all(int fd, unsigned char **buf, size_t *pos, size_t *alloced);
 ssize_t ftor_read_data_to_buffer(int fd, unsigned char *buf, size_t *pos, size_t size, enum read_result *eval, bool read_all);
+struct ftor_event *ftor_create_event(int fd, struct ftor_context *context);
+void ftor_del_event(struct ftor_event *event);
 #endif

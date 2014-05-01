@@ -84,9 +84,7 @@ static int client_connecton_accepter(struct ftor_event *event) {
     setnonblock(f); //TODO: try to reduce syscalls num (accept4)
     context->incoming_fd = f;
 
-    struct ftor_event *client_event = ftor_malloc(context->pool, sizeof(struct ftor_event));
-    client_event->socket_fd = f;
-    client_event->context = context;
+    struct ftor_event *client_event = ftor_create_event(f, context);
     client_event->read_handler = ftor_socks_get_header;
     client_event->write_handler = NULL;
 
@@ -118,9 +116,7 @@ void ftor_start_server() {
         assert(0);
     }
 
-    struct ftor_event *incomming_connection_event = malloc(sizeof(struct ftor_event));
-    incomming_connection_event->socket_fd = listening_socket;
-    incomming_connection_event->context = NULL;
+    struct ftor_event *incomming_connection_event = ftor_create_event(listening_socket, NULL);
     incomming_connection_event->read_handler = client_connecton_accepter;
     incomming_connection_event->write_handler = NULL;
 

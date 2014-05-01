@@ -37,18 +37,18 @@ static int send_reply(struct ftor_event *event) {
 static int ftor_read_designation(struct ftor_event *event) {
     printf("designation started\n");
     struct ftor_context *context = event->context;
-    ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size);
-    if (context->client_recv_buffer_pos < 4) return 0;
-    uint32_t data_size = ntohl(*(uint32_t *)context->client_recv_buffer);
-    if (context->client_recv_buffer_pos < data_size) return 0;
-    uint16_t domain1_len = ntohs(*(uint16_t *)(context->client_recv_buffer + 4));
-    uint16_t domain2_len = ntohs(*(uint16_t *)(context->client_recv_buffer + 6));
+    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
+    if (event->recv_buffer_pos < 4) return 0;
+    uint32_t data_size = ntohl(*(uint32_t *)event->recv_buffer);
+    if (event->recv_buffer_pos < data_size) return 0;
+    uint16_t domain1_len = ntohs(*(uint16_t *)(event->recv_buffer + 4));
+    uint16_t domain2_len = ntohs(*(uint16_t *)(event->recv_buffer + 6));
     assert((int)data_size == 4 + 2 + 2 + domain1_len + domain2_len);
     close(event->socket_fd);
     context->chain_domain_name1 = ftor_malloc(context->pool, domain1_len + 1);
     context->chain_domain_name2 = ftor_malloc(context->pool, domain2_len + 1);
-    snprintf(context->chain_domain_name1, domain1_len + 1, "%*s", domain1_len, context->client_recv_buffer + 8);
-    snprintf(context->chain_domain_name2, domain2_len + 1, "%*s", domain2_len, context->client_recv_buffer + 8 + domain1_len);
+    snprintf(context->chain_domain_name1, domain1_len + 1, "%*s", domain1_len, event->recv_buffer + 8);
+    snprintf(context->chain_domain_name2, domain2_len + 1, "%*s", domain2_len, event->recv_buffer + 8 + domain1_len);
     /*TODO: make free event or add to context allocator */
     printf("designation ended\n");
     return 0;
@@ -91,9 +91,7 @@ static void request_for_servers_chain(struct ftor_context *context) {
         assert(0);
     }
 
-    struct ftor_event *designator_event = malloc(sizeof(struct ftor_event));
-    designator_event->socket_fd = designator_socket;
-    designator_event->context = context;
+    struct ftor_event *designator_event = ftor_create_event(designator_socket, context);
     designator_event->read_handler = NULL;
     designator_event->write_handler = designator_connected;
 
@@ -104,9 +102,9 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
     printf("idented started\n");
     struct ftor_context *context = event->context;
     assert(context->state == socks_header_received_state);
-    unsigned char *start = context->client_recv_buffer + context->client_recv_buffer_pos;
-    ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size);
-    unsigned char *stop = context->client_recv_buffer + context->client_recv_buffer_pos;
+    unsigned char *start = event->recv_buffer + event->recv_buffer_pos;
+    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
+    unsigned char *stop = event->recv_buffer + event->recv_buffer_pos;
     bool ended = false;
     for (; start <= stop; ++start) {
         if (*start == '\0') {
@@ -116,7 +114,7 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
         }
     }
     if (!ended) return 0;
-    context->client_recv_buffer_pos = 0;
+    event->recv_buffer_pos = 0;
     event->read_handler = NULL;
     event->write_handler = NULL;
     request_for_servers_chain(context);
@@ -126,14 +124,14 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
 
 int ftor_socks_get_header(struct ftor_event *event) {
     struct ftor_context *context = event->context;
-    ssize_t readed = ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size);
+    ssize_t readed = ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
     printf("readed=%zd\n", readed);
-    if (context->client_recv_buffer_pos < STABLE_HEADER_LEN) return 0;
-    context->peer_port = ntohs(*((uint16_t *)(context->client_recv_buffer + 2)));
-    context->peer_address = ntohl(*((uint32_t *)(context->client_recv_buffer + 4)));
+    if (event->recv_buffer_pos < STABLE_HEADER_LEN) return 0;
+    context->peer_port = ntohs(*((uint16_t *)(event->recv_buffer + 2)));
+    context->peer_address = ntohl(*((uint32_t *)(event->recv_buffer + 4)));
     context->state = socks_header_received_state;
-    memmove(context->client_recv_buffer, context->client_recv_buffer + STABLE_HEADER_LEN, context->client_recv_buffer_pos - STABLE_HEADER_LEN);
-    context->client_recv_buffer_pos -= STABLE_HEADER_LEN;
+    memmove(event->recv_buffer, event->recv_buffer + STABLE_HEADER_LEN, event->recv_buffer_pos - STABLE_HEADER_LEN);
+    event->recv_buffer_pos -= STABLE_HEADER_LEN;
     event->read_handler = ftor_socks_get_identd;
     event->write_handler = NULL;
     ftor_socks_get_identd(event);
