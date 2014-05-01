@@ -66,7 +66,7 @@ struct ftor_context {
 
 struct ftor_context *ftor_create_context();
 void ftor_del_context(struct ftor_context *context);
-ssize_t ftor_read_all(int fd, unsigned char **buf, size_t *pos, size_t *alloced);
+ssize_t ftor_read_all(int fd, unsigned char **buf, size_t *pos, size_t *alloced, bool *eof, bool *error);
 ssize_t ftor_read_data_to_buffer(int fd, unsigned char *buf, size_t *pos, size_t size, enum read_result *eval, bool read_all);
 struct ftor_event *ftor_create_event(int fd, struct ftor_context *context);
 void ftor_del_event(struct ftor_event *event);

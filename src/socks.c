@@ -43,10 +43,13 @@ static int send_reply(struct ftor_event *event) {
 static int ftor_read_resolver_answer(struct ftor_event *event) {
     printf("dns reply started\n");
     struct ftor_context *context = event->context;
-    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
-    if (event->recv_buffer_pos < 4) return EVENT_RESULT_CONT;
+    bool eof = false;
+    bool error = false;
+    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
+    if (event->recv_buffer_pos < 4) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     uint32_t data_size = ntohl(*(uint32_t *)event->recv_buffer);
-    if (event->recv_buffer_pos < data_size) return EVENT_RESULT_CONT;
+    if (event->recv_buffer_pos < data_size) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
 
     uint8_t error_code = *((uint8_t *)(event->recv_buffer + 4));
     if (error_code != RESOLVER_ERRCODE_OK) {
@@ -152,10 +155,13 @@ static int request_for_dns_resolution(struct ftor_context *context) {
 static int ftor_read_designation(struct ftor_event *event) {
     printf("designation started\n");
     struct ftor_context *context = event->context;
-    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
-    if (event->recv_buffer_pos < 4) return EVENT_RESULT_CONT;
+    bool eof = false;
+    bool error = false;
+    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
+    if (event->recv_buffer_pos < 4) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     uint32_t data_size = ntohl(*(uint32_t *)event->recv_buffer);
-    if (event->recv_buffer_pos < data_size) return EVENT_RESULT_CONT;
+    if (event->recv_buffer_pos < data_size) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     uint16_t domain1_len = ntohs(*(uint16_t *)(event->recv_buffer + 4));
     uint16_t domain2_len = ntohs(*(uint16_t *)(event->recv_buffer + 6));
     if ((int)data_size == 4 + 2 + 2 + domain1_len + domain2_len) {
@@ -222,7 +228,10 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
     struct ftor_context *context = event->context;
     assert(context->state == socks_header_received_state);
     unsigned char *start = event->recv_buffer + event->recv_buffer_pos;
-    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
+    bool eof = false;
+    bool error = false;
+    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
     unsigned char *stop = event->recv_buffer + event->recv_buffer_pos;
     bool ended = false;
     for (; start <= stop; ++start) {
@@ -232,7 +241,7 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
             break;
         }
     }
-    if (!ended) return EVENT_RESULT_CONT;
+    if (!ended) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     event->recv_buffer_pos = 0;
     event->read_handler = NULL;
     event->write_handler = NULL;
@@ -242,9 +251,12 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
 
 int ftor_socks_get_header(struct ftor_event *event) {
     struct ftor_context *context = event->context;
-    ssize_t readed = ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size);
+    bool eof = false;
+    bool error = false;
+    ssize_t readed = ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
     printf("readed=%zd\n", readed);
-    if (event->recv_buffer_pos < STABLE_HEADER_LEN) return EVENT_RESULT_CONT;
+    if (event->recv_buffer_pos < STABLE_HEADER_LEN) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     context->peer_port = ntohs(*((uint16_t *)(event->recv_buffer + 2)));
     context->peer_address = ntohl(*((uint32_t *)(event->recv_buffer + 4)));
     context->state = socks_header_received_state;

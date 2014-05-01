@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 #include "events.h"
 
 struct ftor_context *ftor_create_context() {
@@ -60,13 +61,24 @@ void ftor_del_context(struct ftor_context *context) {
     free(context);
 }
 
-ssize_t ftor_read_all(int fd, unsigned char **buf, size_t *pos, size_t *alloced) {
+ssize_t ftor_read_all(int fd, unsigned char **buf, size_t *pos, size_t *alloced, bool *eof, bool *error) {
+    *eof = false;
+    *error = false;
     char tmp_buf[1];
     ssize_t bytes_readed = 0;
     ssize_t total_readed = 0;
     do {
-        bytes_readed = read(fd, tmp_buf, sizeof(tmp_buf));
-        if (bytes_readed <= 0) break;
+        bytes_readed = recv(fd, tmp_buf, sizeof(tmp_buf), MSG_DONTWAIT);
+        if (bytes_readed == 0) {
+            *eof = true;
+            break;
+        }
+        if (bytes_readed < 0) {
+            if (errno == EAGAIN) {
+                *error = true;
+            }
+            break;
+        }
         if ((ssize_t)*alloced < (*buf +(int)(*pos)) - *buf + bytes_readed) {
             *alloced *= 2;
             *buf = realloc(*buf, *alloced);
