@@ -1,9 +1,10 @@
-#include <assert.h>
 #include "socks.h"
 #include "events.h"
 #include "config.h"
 #include "network.h"
+#include "rsa.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
