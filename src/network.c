@@ -20,11 +20,20 @@ static int epoll_fd;
 static bool running_server = true;
 
 static int process_event(struct ftor_event *event, int happend) {
+    int rc;
     if (event->read_handler && (happend & EPOLLIN)) {
-        event->read_handler(event);
+        rc = event->read_handler(event);
+        if (rc == EVENT_RESULT_CLOSE) {
+            ftor_del_event(event);
+            return 0;
+        }
     }
     if (event->write_handler && (happend & EPOLLOUT)) {
-        event->write_handler(event);
+        rc = event->write_handler(event);
+        if (rc == EVENT_RESULT_CLOSE) {
+            ftor_del_event(event);
+            return 0;
+        }
     }
     if (happend & EPOLLRDHUP) {
         

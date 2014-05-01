@@ -34,6 +34,91 @@ static int send_reply(struct ftor_event *event) {
     return 0;
 }*/
 
+#define add_to_buf(buf, pos, src, size) { \
+    memcpy(buf + pos, src, size); \
+    pos += size; \
+}
+
+static int send_request_to_resolver(struct ftor_event *event) {
+    ssize_t bytes_sended = send(event->socket_fd, event->send_buffer, event->send_buffer_pos, MSG_DONTWAIT);
+    printf("sended %zd bytes to resolver\n", bytes_sended);
+    if ((size_t)bytes_sended == event->send_buffer_pos) {
+        event->read_handler = NULL;
+        event->write_handler = NULL;
+        return EVENT_RESULT_CLOSE;
+    }
+    memmove(event->send_buffer, event->send_buffer + bytes_sended, event->send_buffer_pos - bytes_sended);
+    return EVENT_RESULT_CONT;
+}
+
+static void create_resolver_request(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    uint16_t domain1_len = strlen(context->chain_domain_name1);
+    uint16_t domain2_len = strlen(context->chain_domain_name2);
+    uint32_t flags = 0; //RESERVED for future. Zero field.
+    uint32_t packet_len = domain1_len + domain2_len + sizeof(domain1_len) + sizeof(domain2_len) + sizeof(flags) + sizeof(packet_len);
+    if (event->send_buffer_size < packet_len) {
+        event->send_buffer = (unsigned char *)realloc((void *)event->send_buffer, packet_len);
+        event->send_buffer_size = packet_len;
+    }
+    domain1_len = htons(domain1_len);
+    domain2_len = htons(domain2_len);
+    flags = htonl(flags);
+    packet_len = htonl(packet_len);
+    add_to_buf(event->send_buffer, event->send_buffer_pos, &packet_len, sizeof(packet_len));
+    add_to_buf(event->send_buffer, event->send_buffer_pos, &flags, sizeof(flags));
+    add_to_buf(event->send_buffer, event->send_buffer_pos, &domain1_len, sizeof(domain1_len));
+    add_to_buf(event->send_buffer, event->send_buffer_pos, &domain2_len, sizeof(domain2_len));
+    add_to_buf(event->send_buffer, event->send_buffer_pos, context->chain_domain_name1, ntohs(domain1_len));
+    add_to_buf(event->send_buffer, event->send_buffer_pos, context->chain_domain_name2, ntohs(domain2_len));
+}
+
+static int resolver_connected(struct ftor_event *event) {
+    int result;
+    socklen_t result_len = sizeof(result);
+    if (getsockopt(event->socket_fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0) {
+        // error, fail somehow, close socket
+        assert(0);
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    if (result != 0) {
+        // connection failed; error code is in 'result'
+        assert(0);
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    printf("Connection established with resolver!\n");
+    create_resolver_request(event);
+    event->read_handler = NULL;
+    event->write_handler = send_request_to_resolver;
+    return EVENT_RESULT_CONT;
+}
+
+static int request_for_dns_resolution(struct ftor_context *context) {
+    struct conf *config = get_conf();
+
+    struct sockaddr_in resolver_addr;
+
+    int resolver_socket = socket(AF_INET, SOCK_STREAM, 0);
+    inet_aton(config->resolver_ip_addr, &resolver_addr.sin_addr);
+    resolver_addr.sin_family = AF_INET;
+    resolver_addr.sin_port = htons(config->resolver_port);
+
+    setnonblock(resolver_socket);
+
+    if (connect(resolver_socket, (struct sockaddr *)&resolver_addr, sizeof(resolver_addr)) < 0 && errno != EINPROGRESS) {
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    struct ftor_event *resolver_event = ftor_create_event(resolver_socket, context);
+    resolver_event->read_handler = NULL;
+    resolver_event->write_handler = resolver_connected;
+
+    add_event_to_reactor(resolver_event);
+    return EVENT_RESULT_CLOSE;
+}
+
 static int ftor_read_designation(struct ftor_event *event) {
     printf("designation started\n");
     struct ftor_context *context = event->context;
@@ -50,7 +135,7 @@ static int ftor_read_designation(struct ftor_event *event) {
     snprintf(context->chain_domain_name2, domain2_len + 1, "%*s", domain2_len, event->recv_buffer + 8 + domain1_len);
     /*TODO: make free event or add to context allocator */
     printf("designation ended\n");
-    return EVENT_RESULT_CLOSE;
+    return request_for_dns_resolution(context);
 }
 
 static int designator_connected(struct ftor_event *event) {
@@ -68,7 +153,7 @@ static int designator_connected(struct ftor_event *event) {
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
 
-    printf("Connection established with designator!");
+    printf("Connection established with designator!\n");
     event->read_handler = ftor_read_designation;
     event->write_handler = NULL;
     return EVENT_RESULT_CONT;
@@ -95,7 +180,7 @@ static int request_for_servers_chain(struct ftor_context *context) {
     designator_event->write_handler = designator_connected;
 
     add_event_to_reactor(designator_event);
-    return EVENT_RESULT_CLOSE;
+    return EVENT_RESULT_CONT;
 }
 
 static int ftor_socks_get_identd(struct ftor_event *event) {

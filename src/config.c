@@ -32,7 +32,9 @@ static struct conf config = {
     .listening_ip_addr = "127.0.0.1",
     .designator_ip_addr = "127.0.0.1",
     .designator_port = 27017,
-    .max_epoll_queue = 64
+    .max_epoll_queue = 64,
+    .resolver_port = 27018,
+    .resolver_ip_addr = "127.0.0.1"
 };
 
 static struct config_parser parser[] = {
@@ -40,6 +42,8 @@ static struct config_parser parser[] = {
     {"listening_ip_addr", ct_string, config.listening_ip_addr},
     {"designator_port", ct_int, &config.listening_port},
     {"designator_ip_addr", ct_string, config.listening_ip_addr},
+    {"resolver_port", ct_int, &config.resolver_port},
+    {"resolver_ip_addr", ct_string, config.resolver_ip_addr},
     {"max_epoll_queue", ct_int, &config.max_epoll_queue}
 };
 
@@ -99,6 +103,7 @@ struct conf *get_conf() {
         if(!read_config(config_file)) {
             return NULL;
         }
+        configured = true;
     }
     return &config;
 }
