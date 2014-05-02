@@ -9,8 +9,12 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #define STABLE_HEADER_LEN 8
+
+int random_fd = -1;
 /*
 static int read_request(struct ftor_event *event) {
     struct ftor_context *context = event->context;
@@ -38,6 +42,103 @@ static int send_reply(struct ftor_event *event) {
 #define add_to_buf(buf, pos, src, size) { \
     memcpy(buf + pos, src, size); \
     pos += size; \
+}
+
+static int send_header_to_next_node(struct ftor_event *event) {
+    ssize_t bytes_sended = send(event->socket_fd, event->send_buffer, event->send_buffer_pos, MSG_DONTWAIT);
+    printf("sended %zd bytes to next node\n", bytes_sended);
+    if ((size_t)bytes_sended == event->send_buffer_pos) {
+        event->read_handler = NULL;
+        event->write_handler = NULL;
+    }
+    memmove(event->send_buffer, event->send_buffer + bytes_sended, event->send_buffer_pos - bytes_sended);
+    event->send_buffer_pos -= bytes_sended;
+    return EVENT_RESULT_CONT;
+}
+
+//packet must be 256 bytes
+static void gen_node_header(unsigned char *packet, uint32_t flags, uint32_t next_ip, unsigned char *sess_key, int sess_key_len, unsigned char *pubkey) {
+    if (random_fd == -1) {
+        random_fd = open("/dev/random", O_RDONLY);
+    }
+    const int plain_header_len = 120; // Must be less then 256
+    unsigned char plain[plain_header_len];
+    uint32_t magic_num = htonl(0xDEADBEAF);
+    uint32_t next_ip_n = htonl(next_ip);
+    uint32_t flags_n = htonl(flags);
+    read(random_fd, sess_key, sess_key_len);
+    int pos = 0;
+    add_to_buf(plain, pos, &magic_num, (sizeof(magic_num)));
+    add_to_buf(plain, pos, &flags_n, (sizeof(flags_n)));
+    add_to_buf(plain, pos, &next_ip_n, (sizeof(next_ip_n)));
+    add_to_buf(plain, pos, sess_key, (sess_key_len));
+
+    int error = 0;
+    int encr_len = rsa_public_encrypt(plain, pos, pubkey, packet, &error);
+    char err[256];
+    rsa_get_last_error(err);
+    printf("encr_len: %d\n%s\n", encr_len, err);
+    assert(encr_len == 256);
+}
+
+static void create_next_node_request(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    unsigned char pack1[256];
+    unsigned char pack2[256];
+    gen_node_header(pack1, 0, context->chain_ip1, context->sesskey1, sizeof(context->sesskey1), (unsigned char *)context->chain_pubkey1);
+    gen_node_header(pack2, 0, context->chain_ip2, context->sesskey2, sizeof(context->sesskey2), (unsigned char *)context->chain_pubkey2);
+    if (event->send_buffer_size < sizeof(pack1) + sizeof(pack2)) {
+        event->send_buffer = (unsigned char *)realloc((void *)event->send_buffer, sizeof(pack1) + sizeof(pack2));
+        event->send_buffer_size = sizeof(pack1) + sizeof(pack2);
+    }
+    add_to_buf(event->send_buffer, event->send_buffer_pos, pack1, sizeof(pack1));
+    add_to_buf(event->send_buffer, event->send_buffer_pos, pack2, sizeof(pack2));
+}
+
+static int connected_to_node(struct ftor_event *event) {
+    int result;
+    socklen_t result_len = sizeof(result);
+    if (getsockopt(event->socket_fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0) {
+        // error, fail somehow, close socket
+        printf("%d cannot connect to next node\n", __LINE__);
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    if (result != 0) {
+        // connection failed; error code is in 'result'
+        printf("%d cannot connect to next node\n", __LINE__);
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    printf("Connection established with next node!\n");
+    create_next_node_request(event);
+    event->read_handler = NULL;
+    event->write_handler = send_header_to_next_node;
+    return EVENT_RESULT_CONT;
+}
+
+static int request_for_chain_node(struct ftor_context *context) {
+    struct conf *config = get_conf();
+
+    struct sockaddr_in node_addr;
+
+    int node_socket = socket(AF_INET, SOCK_STREAM, 0);
+    node_addr.sin_addr.s_addr = htonl(context->chain_ip1);
+    node_addr.sin_family = AF_INET;
+    node_addr.sin_port = htons(config->node_port);
+
+    setnonblock(node_socket);
+
+    if (connect(node_socket, (struct sockaddr *)&node_addr, sizeof(node_addr)) < 0 && errno != EINPROGRESS) {
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    struct ftor_event *node_event = ftor_create_event(node_socket, context);
+    node_event->read_handler = NULL;
+    node_event->write_handler = connected_to_node;
+
+    add_event_to_reactor(node_event);
+    return EVENT_RESULT_CLOSE;
 }
 
 static int ftor_read_resolver_answer(struct ftor_event *event) {
@@ -69,7 +170,7 @@ static int ftor_read_resolver_answer(struct ftor_event *event) {
     snprintf(context->chain_pubkey1, pubkey1_len + 1, "%*s", pubkey1_len, event->recv_buffer + 17);
     snprintf(context->chain_pubkey2, pubkey2_len + 1, "%*s", pubkey2_len, event->recv_buffer + 17 + pubkey1_len);
     printf("dns reply ended\n");
-    return EVENT_RESULT_CLOSE;
+    return request_for_chain_node(context);
 }
 
 static int send_request_to_resolver(struct ftor_event *event) {
@@ -164,7 +265,7 @@ static int ftor_read_designation(struct ftor_event *event) {
     if (event->recv_buffer_pos < data_size) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     uint16_t domain1_len = ntohs(*(uint16_t *)(event->recv_buffer + 4));
     uint16_t domain2_len = ntohs(*(uint16_t *)(event->recv_buffer + 6));
-    if ((int)data_size == 4 + 2 + 2 + domain1_len + domain2_len) {
+    if ((int)data_size != 4 + 2 + 2 + domain1_len + domain2_len) {
         printf("Bad reply from designator\n");
         return EVENT_RESULT_CONTEXT_CLOSE;
     }

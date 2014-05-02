@@ -4,5 +4,6 @@
 
 #define RESOLVER_ERRCODE_OK 0
 
+extern int random_fd;
 int ftor_socks_get_header(struct ftor_event *event);
 #endif

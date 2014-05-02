@@ -62,6 +62,8 @@ struct ftor_context {
     char *chain_pubkey2;
     uint32_t chain_ip1;
     uint32_t chain_ip2;
+    unsigned char sesskey1[256];
+    unsigned char sesskey2[256];
     int events_num;
 };
 

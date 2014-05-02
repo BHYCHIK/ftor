@@ -23,7 +23,7 @@ static int process_event(struct ftor_event *event, int happend) {
     int rc = 0;
     struct ftor_context *context = event->context;
 
-    if (context && context->is_terminated) {
+    if (context && context->terminated) {
         ftor_del_event(event);
         return 0;
     }
@@ -32,7 +32,7 @@ static int process_event(struct ftor_event *event, int happend) {
         rc = event->read_handler(event);
         if (rc != EVENT_RESULT_CONT) {
             if (rc == EVENT_RESULT_CONTEXT_CLOSE && context) {
-                context->is_terminated = true;
+                context->terminated = true;
             }
             ftor_del_event(event);
             return 0;
@@ -42,7 +42,7 @@ static int process_event(struct ftor_event *event, int happend) {
         rc = event->write_handler(event);
         if (rc != EVENT_RESULT_CONT) {
             if (rc == EVENT_RESULT_CONTEXT_CLOSE && context) {
-                context->is_terminated = true;
+                context->terminated = true;
             }
             ftor_del_event(event);
             return 0;

@@ -30,6 +30,7 @@ struct config_parser {
 static struct conf config = {
     .listening_port = 27015,
     .listening_ip_addr = "127.0.0.1",
+    .node_port = 27016,
     .designator_ip_addr = "127.0.0.1",
     .designator_port = 27017,
     .max_epoll_queue = 64,
@@ -44,7 +45,8 @@ static struct config_parser parser[] = {
     {"designator_ip_addr", ct_string, config.listening_ip_addr},
     {"resolver_port", ct_int, &config.resolver_port},
     {"resolver_ip_addr", ct_string, config.resolver_ip_addr},
-    {"max_epoll_queue", ct_int, &config.max_epoll_queue}
+    {"max_epoll_queue", ct_int, &config.max_epoll_queue},
+    {"node_port", ct_int, &config.node_port}
 };
 
 static bool read_config(const char *cfg_file);

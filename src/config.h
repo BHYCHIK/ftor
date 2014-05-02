@@ -12,6 +12,7 @@ struct conf {
     int resolver_port;
     char resolver_ip_addr[CONF_STR_MAX_SIZE];
     int max_epoll_queue;
+    int node_port;
 };
 
 struct conf *get_conf();
