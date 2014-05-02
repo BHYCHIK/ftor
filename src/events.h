@@ -53,6 +53,9 @@ struct ftor_context {
     unsigned char *client_recv_buffer;
     size_t client_recv_buffer_size;
     size_t client_recv_buffer_pos;
+    unsigned char *chain_recv_buffer;
+    size_t chain_recv_buffer_size;
+    size_t chain_recv_buffer_pos;
     uint16_t peer_port;
     uint32_t peer_address;
     struct ftor_event *client_event;
@@ -62,9 +65,13 @@ struct ftor_context {
     char *chain_pubkey2;
     uint32_t chain_ip1;
     uint32_t chain_ip2;
-    unsigned char sesskey1[256];
-    unsigned char sesskey2[256];
+    unsigned char sesskey1[128];
+    unsigned char sesskey2[128];
     int events_num;
+    bool client_eof;
+    bool chain_eof;
+    bool client_shutdown;
+    bool chain_shutdown;
 };
 
 struct ftor_context *ftor_create_context();

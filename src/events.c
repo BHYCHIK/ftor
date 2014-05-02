@@ -2,6 +2,7 @@
 #include <string.h>
 #include <errno.h>
 #include "events.h"
+#include <stdio.h>
 
 struct ftor_context *ftor_create_context() {
     struct ftor_context *context = malloc(sizeof(struct ftor_context));
@@ -12,6 +13,9 @@ struct ftor_context *ftor_create_context() {
     context->client_recv_buffer = malloc(RECV_BUFFER_START_SIZE);
     context->client_recv_buffer_size = RECV_BUFFER_START_SIZE;
     context->client_recv_buffer_pos = 0;
+    context->chain_recv_buffer = malloc(RECV_BUFFER_START_SIZE);
+    context->chain_recv_buffer_size = RECV_BUFFER_START_SIZE;
+    context->chain_recv_buffer_pos = 0;
     context->client_addr_len = sizeof(context->client_addr);
     context->client_event = NULL;
     context->chain_domain_name1 = NULL;
@@ -21,6 +25,8 @@ struct ftor_context *ftor_create_context() {
     context->chain_ip1 = 0;
     context->chain_ip2 = 0;
     context->events_num = 0;
+    context->client_eof = false;
+    context->chain_eof = false;
     memset(&context->client_addr, 0, context->client_addr_len);
     return context;
 }
@@ -57,6 +63,7 @@ void ftor_del_event(struct ftor_event *event) {
 }
 
 void ftor_del_context(struct ftor_context *context) {
+    printf("Context deleted");
     ftor_free(context->pool);
     free(context->client_recv_buffer);
     free(context);
