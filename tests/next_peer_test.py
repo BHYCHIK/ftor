@@ -16,14 +16,29 @@ while True:
         conn.close()
 a = conn.recv(512)
 conn.send(struct.pack("!B", 0))
+lenta = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+lenta.connect(('192.168.0.1', 80))
 while True:
-    lenta = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    lenta.connect(('81.19.85.88', 80))
     a = conn.recv(2048)
-    lenta.send(a)
-    a = lenta.recv(10000)
     print a
-    conn.send(a)
+    if len(a) > 0:
+        lenta.send(a)
+    else:
+        lenta.close()
+        conn.close()
+        break
+    while True:
+        try:
+            a = lenta.recv(2048)
+        except Exception:
+            break
+        print a
+        if len(a) > 0:
+            conn.send(a)
+        else:
+            lenta.close()
+            conn.close()
+            break
     break
 
 conn.close()

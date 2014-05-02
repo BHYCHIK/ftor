@@ -26,6 +26,7 @@ static int recv_from_chain(struct ftor_event *event) {
     bool eof = false;
     bool error = false;
     ftor_read_all(event->socket_fd, &context->chain_recv_buffer, &context->chain_recv_buffer_pos, &context->chain_recv_buffer_size, &eof, &error);
+    printf("%*s", (int)context->chain_recv_buffer_pos, context->chain_recv_buffer);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
     printf("received from chain\n");
     if (eof) {
@@ -187,8 +188,8 @@ static void create_next_node_request(struct ftor_event *event) {
     struct ftor_context *context = event->context;
     unsigned char pack1[256];
     unsigned char pack2[256];
-    gen_node_header(pack1, 0, context->chain_ip1, context->sesskey1, sizeof(context->sesskey1), (unsigned char *)context->chain_pubkey1);
-    gen_node_header(pack2, 0, context->chain_ip2, context->sesskey2, sizeof(context->sesskey2), (unsigned char *)context->chain_pubkey2);
+    gen_node_header(pack1, 0, context->chain_ip2, context->sesskey1, sizeof(context->sesskey1), (unsigned char *)context->chain_pubkey1);
+    gen_node_header(pack2, 0, context->peer_address, context->sesskey2, sizeof(context->sesskey2), (unsigned char *)context->chain_pubkey2);
     if (event->send_buffer_size < sizeof(pack1) + sizeof(pack2)) {
         event->send_buffer = (unsigned char *)realloc((void *)event->send_buffer, sizeof(pack1) + sizeof(pack2));
         event->send_buffer_size = sizeof(pack1) + sizeof(pack2);
