@@ -129,12 +129,12 @@ static void send_ok_to_client(struct ftor_event *event) {
 
 static int chain_establish_result(struct ftor_event *event) {
     struct ftor_context *context = event->context;
-    bool eof = false;
+    //bool eof = false;
     bool error = false;
-    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
+    //ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
-    if (event->recv_buffer_pos < 1) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
-    uint8_t res = *((uint8_t *)(event->recv_buffer));
+    //if (event->recv_buffer_pos < 1) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
+    uint8_t res = 0;//*((uint8_t *)(event->recv_buffer));
     if (res != 0) { //Probably handle correct?
         printf("Chain not established ok\n");
         return EVENT_RESULT_CONTEXT_CLOSE;
@@ -147,14 +147,16 @@ static int chain_establish_result(struct ftor_event *event) {
 }
 
 static int send_header_to_next_node(struct ftor_event *event) {
-    ssize_t bytes_sended = send(event->socket_fd, event->send_buffer, event->send_buffer_pos, MSG_DONTWAIT);
+    ssize_t bytes_sended = event->send_buffer_pos;//send(event->socket_fd, event->send_buffer, event->send_buffer_pos, MSG_DONTWAIT);
     printf("sended %zd bytes to next node\n", bytes_sended);
     if ((size_t)bytes_sended == event->send_buffer_pos) {
+        printf("header sent to next node");
         event->read_handler = chain_establish_result;
         event->write_handler = NULL;
     }
     memmove(event->send_buffer, event->send_buffer + bytes_sended, event->send_buffer_pos - bytes_sended);
     event->send_buffer_pos -= bytes_sended;
+    return event->read_handler(event);
     return EVENT_RESULT_CONT;
 }
 
@@ -221,14 +223,14 @@ static int connected_to_node(struct ftor_event *event) {
 }
 
 static int request_for_chain_node(struct ftor_context *context) {
-    struct conf *config = get_conf();
+    //struct conf *config = get_conf();
 
     struct sockaddr_in node_addr;
 
     int node_socket = socket(AF_INET, SOCK_STREAM, 0);
-    node_addr.sin_addr.s_addr = htonl(context->chain_ip1);
+    node_addr.sin_addr.s_addr = htonl(context->peer_address);
     node_addr.sin_family = AF_INET;
-    node_addr.sin_port = htons(config->node_port);
+    node_addr.sin_port = htons(context->peer_port);
 
     setnonblock(node_socket);
 
