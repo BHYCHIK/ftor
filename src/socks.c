@@ -265,8 +265,8 @@ static int ftor_read_resolver_answer(struct ftor_event *event) {
 
     context->chain_pubkey1 = ftor_malloc(context->pool, pubkey1_len + 1);
     context->chain_pubkey2 = ftor_malloc(context->pool, pubkey2_len + 1);
-    snprintf(context->chain_pubkey1, pubkey1_len + 1, "%*s", pubkey1_len, event->recv_buffer + 17);
-    snprintf(context->chain_pubkey2, pubkey2_len + 1, "%*s", pubkey2_len, event->recv_buffer + 17 + pubkey1_len);
+    snprintf(context->chain_pubkey1, pubkey1_len + 1, "%.*s", pubkey1_len, event->recv_buffer + 17);
+    snprintf(context->chain_pubkey2, pubkey2_len + 1, "%.*s", pubkey2_len, event->recv_buffer + 17 + pubkey1_len);
     printf("dns reply ended\n");
     return request_for_chain_node(context);
 }
@@ -369,8 +369,8 @@ static int ftor_read_designation(struct ftor_event *event) {
     }
     context->chain_domain_name1 = ftor_malloc(context->pool, domain1_len + 1);
     context->chain_domain_name2 = ftor_malloc(context->pool, domain2_len + 1);
-    snprintf(context->chain_domain_name1, domain1_len + 1, "%*s", domain1_len, event->recv_buffer + 8);
-    snprintf(context->chain_domain_name2, domain2_len + 1, "%*s", domain2_len, event->recv_buffer + 8 + domain1_len);
+    snprintf(context->chain_domain_name1, domain1_len + 1, "%.*s", domain1_len, event->recv_buffer + 8);
+    snprintf(context->chain_domain_name2, domain2_len + 1, "%.*s", domain2_len, event->recv_buffer + 8 + domain1_len);
     /*TODO: make free event or add to context allocator */
     printf("designation ended\n");
     return request_for_dns_resolution(context);
