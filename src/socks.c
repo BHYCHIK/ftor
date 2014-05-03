@@ -26,20 +26,19 @@ static int recv_from_chain(struct ftor_event *event) {
     bool eof = false;
     bool error = false;
     ftor_read_all(event->socket_fd, &context->chain_recv_buffer, &context->chain_recv_buffer_pos, &context->chain_recv_buffer_size, &eof, &error);
-    printf("%*s", (int)context->chain_recv_buffer_pos, context->chain_recv_buffer);
+//    write(STDOUT_FILENO, context->chain_recv_buffer, (int)context->chain_recv_buffer_pos);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
-    printf("received from chain\n");
+//    printf("received from chain\n");
     if (eof) {
         printf("chain eof\n");
         context->chain_eof = true;
-        event->read_handler = NULL;
+        return EVENT_RESULT_CLOSE;
     }
     return EVENT_RESULT_CONT;
 }
 
 static int send_to_chain(struct ftor_event *event) {
     struct ftor_context *context = event->context;
-    if (context->client_shutdown && context->chain_shutdown) return EVENT_RESULT_CONTEXT_CLOSE;
     ssize_t bytes_sended = send(event->socket_fd, context->client_recv_buffer, context->client_recv_buffer_pos, MSG_DONTWAIT);
     if (bytes_sended == -1) printf("to chain errno: %s\n", strerror(errno));
     if (bytes_sended == -1 && errno == EAGAIN) {
@@ -48,14 +47,11 @@ static int send_to_chain(struct ftor_event *event) {
     if (bytes_sended == -1) {
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
-    printf("sended %zd bytes to chain\n", bytes_sended);
+//    printf("sended %zd bytes to chain\n", bytes_sended);
     memmove(context->client_recv_buffer, context->client_recv_buffer + bytes_sended, context->client_recv_buffer_pos - bytes_sended);
     context->client_recv_buffer_pos -= bytes_sended;
     if (context->client_eof && !context->client_recv_buffer_pos) {
-        shutdown(event->socket_fd, SHUT_WR);
-        context->chain_shutdown = true;
-        event->write_handler = NULL;
-        if (context->client_shutdown) return EVENT_RESULT_CONTEXT_CLOSE;
+        return EVENT_RESULT_CLOSE;
     }
     return EVENT_RESULT_CONT;
 }
@@ -65,19 +61,19 @@ static int recv_from_client(struct ftor_event *event) {
     bool eof = false;
     bool error = false;
     ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size, &eof, &error);
-    printf("received from client\n");
+//    printf("received from client\n");
+//    write(STDOUT_FILENO, context->client_recv_buffer, (int)context->client_recv_buffer_pos);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
     if (eof) {
         printf("client eof\n");
         context->client_eof = true;
-        event->read_handler = NULL;
+        return EVENT_RESULT_CLOSE;
     }
     return EVENT_RESULT_CONT;
 }
 
 static int send_to_client(struct ftor_event *event) {
     struct ftor_context *context = event->context;
-    if (context->client_shutdown && context->chain_shutdown) return EVENT_RESULT_CONTEXT_CLOSE;
     ssize_t bytes_sended = send(event->socket_fd, context->chain_recv_buffer, context->chain_recv_buffer_pos, MSG_DONTWAIT);
     if (bytes_sended == -1) printf("to client errno: %s\n", strerror(errno));
     if (bytes_sended == -1 && errno == EAGAIN) {
@@ -86,14 +82,11 @@ static int send_to_client(struct ftor_event *event) {
     if (bytes_sended == -1) {
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
-    printf("sended %zd bytes to client\n", bytes_sended);
+//    printf("sended %zd bytes to client\n", bytes_sended);
     memmove(context->chain_recv_buffer, context->chain_recv_buffer + bytes_sended, context->chain_recv_buffer_pos - bytes_sended);
     context->chain_recv_buffer_pos -= bytes_sended;
     if (context->chain_eof && !context->chain_recv_buffer_pos) {
-        shutdown(event->socket_fd, SHUT_WR);
-        context->client_shutdown = true;
-        event->write_handler = NULL;
-        if (context->chain_shutdown) return EVENT_RESULT_CONTEXT_CLOSE;
+        return EVENT_RESULT_CLOSE;
     }
     return EVENT_RESULT_CONT;
 }

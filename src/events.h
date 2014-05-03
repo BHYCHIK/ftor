@@ -26,6 +26,8 @@ enum read_result {
     read_result_err
 };
 
+int get_total_events();
+
 typedef int (*ftor_handler)(struct ftor_event *event);
 
 struct ftor_event {
@@ -70,8 +72,6 @@ struct ftor_context {
     int events_num;
     bool client_eof;
     bool chain_eof;
-    bool client_shutdown;
-    bool chain_shutdown;
 };
 
 struct ftor_context *ftor_create_context();

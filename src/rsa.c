@@ -22,6 +22,8 @@ static RSA *createRSA(unsigned char *key, int public) {
         rsa = PEM_read_bio_RSAPrivateKey(keybio, &rsa, NULL, NULL);
     }
 
+    BIO_free_all(keybio);
+
     return rsa;
 }
 
@@ -32,7 +34,8 @@ int rsa_public_encrypt(unsigned char *data, int data_len, unsigned char *key, un
         if (error_code) *error_code = 1;
         return 0;
     }
-    int result = RSA_public_encrypt(data_len,data,encrypted,rsa,padding);
+    int result = RSA_public_encrypt(data_len, data, encrypted, rsa, padding);
+    RSA_free(rsa);
     return result;
 }
 
@@ -44,6 +47,7 @@ int rsa_private_decrypt(unsigned char *enc_data, int data_len, unsigned char *ke
         return 0;
     }
     int result = RSA_private_decrypt(data_len, enc_data, decrypted, rsa, padding);
+    RSA_free(rsa);
     return result;
 }
 
@@ -55,6 +59,7 @@ int rsa_private_encrypt(unsigned char *data, int data_len, unsigned char * key, 
         return 0;
     }
     int result = RSA_private_encrypt(data_len, data, encrypted, rsa, padding);
+    RSA_free(rsa);
     return result;
 }
 
@@ -66,6 +71,7 @@ int rsa_public_decrypt(unsigned char *enc_data, int data_len, unsigned char *key
         return 0;
     }
     int result = RSA_public_decrypt(data_len, enc_data, decrypted, rsa, padding);
+    RSA_free(rsa);
     return result;
 }
 

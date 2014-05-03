@@ -4,6 +4,12 @@
 #include "events.h"
 #include <stdio.h>
 
+static int total_events = 0;
+
+int get_total_events() {
+    return total_events;
+}
+
 struct ftor_context *ftor_create_context() {
     struct ftor_context *context = malloc(sizeof(struct ftor_context));
     context->state = conn_none_state;
@@ -28,11 +34,14 @@ struct ftor_context *ftor_create_context() {
     context->client_eof = false;
     context->chain_eof = false;
     memset(&context->client_addr, 0, context->client_addr_len);
+    memset(&context->sesskey1, 0, sizeof(context->sesskey1));
+    memset(&context->sesskey2, 0, sizeof(context->sesskey2));
     return context;
 }
 
 struct ftor_event *ftor_create_event(int fd, struct ftor_context *context) {
     struct ftor_event *event = malloc(sizeof(struct ftor_event));
+    ++total_events;
     event->context = context;
     if (context) ++context->events_num;
     event->socket_fd = fd;
@@ -51,6 +60,7 @@ struct ftor_event *ftor_create_event(int fd, struct ftor_context *context) {
 }
 
 void ftor_del_event(struct ftor_event *event) {
+    --total_events;
     if (event->socket_fd > -1) close(event->socket_fd);
     if (event->context) {
         if ((--event->context->events_num) == 0) {
@@ -63,9 +73,10 @@ void ftor_del_event(struct ftor_event *event) {
 }
 
 void ftor_del_context(struct ftor_context *context) {
-    printf("Context deleted");
+    printf("Context deleted\n");
     ftor_free(context->pool);
     free(context->client_recv_buffer);
+    free(context->chain_recv_buffer);
     free(context);
 }
 

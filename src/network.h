@@ -8,5 +8,6 @@ void ftor_reactor_init();
 void ftor_start_server();
 void ftor_reactor();
 void setnonblock(int fd);
+void stop_server();
 
 #endif

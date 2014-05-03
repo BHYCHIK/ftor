@@ -18,12 +18,17 @@
 static int epoll_fd;
 
 static bool running_server = true;
+static struct ftor_event *incomming_connection_event = NULL;
+
+void stop_server() {
+    running_server = false;
+}
 
 static int process_event(struct ftor_event *event, int happend) {
     int rc = 0;
     struct ftor_context *context = event->context;
 
-    if (context && context->terminated) {
+    if ( !running_server || (context && context->terminated)) {
         ftor_del_event(event);
         return 0;
     }
@@ -63,8 +68,8 @@ static int process_event(struct ftor_event *event, int happend) {
 void ftor_reactor() {
     struct conf *config = get_conf();
     struct epoll_event events[config->max_epoll_queue];
-    while (running_server) {
-        int nfds = epoll_wait(epoll_fd, events, config->max_epoll_queue, -1); //TODO: ADD timeout because of cache
+    while (running_server || get_total_events()) {
+        int nfds = epoll_wait(epoll_fd, events, config->max_epoll_queue, 20);
         for (int i = 0; i < nfds; ++i) {
             process_event((struct ftor_event *)events[i].data.ptr, events[i].events);
         }
@@ -138,7 +143,7 @@ void ftor_start_server() {
         assert(0);
     }
 
-    struct ftor_event *incomming_connection_event = ftor_create_event(listening_socket, NULL);
+    incomming_connection_event = ftor_create_event(listening_socket, NULL);
     incomming_connection_event->read_handler = client_connecton_accepter;
     incomming_connection_event->write_handler = NULL;
 

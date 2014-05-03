@@ -5,11 +5,14 @@
 #include <stdio.h>
 #include <signal.h>
 
-int main() {
+static void set_signals() {
     signal(SIGPIPE, SIG_IGN);
-    __attribute__((unused))struct conf *config = get_conf();
-    struct mem_pool *pool = ftor_pool_get();
-    ftor_free(pool);
+    signal(SIGINT, stop_server);
+    signal(SIGKILL, stop_server);
+}
+
+int main() {
+    set_signals();
     ftor_reactor_init();
     ftor_start_server();
     ftor_reactor();
