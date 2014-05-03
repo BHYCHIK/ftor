@@ -24,6 +24,12 @@ void stop_server() {
     running_server = false;
 }
 
+static int incomming_connection_event_destructor(struct ftor_event *event) {
+    incomming_connection_event = NULL;
+    event->destuction_handler = NULL;
+    return EVENT_RESULT_CONT;
+}
+
 static int process_event(struct ftor_event *event, int happend) {
     int rc = 0;
     struct ftor_context *context = event->context;
@@ -73,7 +79,11 @@ void ftor_reactor() {
         for (int i = 0; i < nfds; ++i) {
             process_event((struct ftor_event *)events[i].data.ptr, events[i].events);
         }
+        if (!running_server && incomming_connection_event) {
+            ftor_del_event(incomming_connection_event);
+        }
     }
+    if (random_fd != -1) close(random_fd);
 }
 
 //TODO: add events arg
@@ -146,6 +156,7 @@ void ftor_start_server() {
     incomming_connection_event = ftor_create_event(listening_socket, NULL);
     incomming_connection_event->read_handler = client_connecton_accepter;
     incomming_connection_event->write_handler = NULL;
+    incomming_connection_event->destuction_handler = incomming_connection_event_destructor;
 
     add_event_to_reactor(incomming_connection_event);
 }

@@ -34,6 +34,7 @@ struct ftor_event {
     struct ftor_context *context;
     ftor_handler read_handler;
     ftor_handler write_handler;
+    ftor_handler destuction_handler;
     int socket_fd;
 
     unsigned char *recv_buffer;

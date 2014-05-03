@@ -8,7 +8,7 @@
 static void set_signals() {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, stop_server);
-    signal(SIGKILL, stop_server);
+    signal(SIGTERM, stop_server);
 }
 
 int main() {

@@ -47,6 +47,7 @@ struct ftor_event *ftor_create_event(int fd, struct ftor_context *context) {
     event->socket_fd = fd;
     event->read_handler = NULL;
     event->write_handler = NULL;
+    event->destuction_handler = NULL;
 
     event->recv_buffer = malloc(RECV_BUFFER_START_SIZE);
     event->recv_buffer_size = RECV_BUFFER_START_SIZE;
@@ -60,6 +61,7 @@ struct ftor_event *ftor_create_event(int fd, struct ftor_context *context) {
 }
 
 void ftor_del_event(struct ftor_event *event) {
+    if (event->destuction_handler) event->destuction_handler(event);
     --total_events;
     if (event->socket_fd > -1) close(event->socket_fd);
     if (event->context) {
