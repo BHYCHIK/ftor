@@ -13,7 +13,7 @@ struct conf {
     char resolver_ip_addr[CONF_STR_MAX_SIZE];
     int max_epoll_queue;
     int node_port;
-    char private_key[CONF_STR_MAX_SIZE];
+    unsigned char private_key[CONF_STR_MAX_SIZE];
 };
 
 struct conf *get_conf();

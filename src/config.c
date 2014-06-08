@@ -63,7 +63,6 @@ bool set_config_file(const char *cfg) {
 static void parse_config_line(const char *key, const char *value) {
     if (!strcasecmp("include", key)) read_config(value);
     int options_num = sizeof(parser) / sizeof(struct config_parser);
-    int fd = -1;
     for (int i = 0; i < options_num; ++i) {
         if (!strcasecmp(key, parser[i].opt_name)) {
             switch (parser[i].opt_type) {
@@ -74,11 +73,13 @@ static void parse_config_line(const char *key, const char *value) {
                 strncpy(parser[i].opt_val, value, CONF_STR_MAX_SIZE);
                 break;
             case ct_file:
-                fd = open(value, O_RDONLY);
-                read(fd, parser[i].opt_val, CONF_STR_MAX_SIZE);
+                {
+                int fd = open(value, O_RDONLY);
+                int readed = read(fd, parser[i].opt_val, CONF_STR_MAX_SIZE);
+                *(((unsigned char *)parser[i].opt_val) + readed) = '\0';
                 close(fd);
-                fd = -1;
-            break;
+                break;
+                }
             }
         }
     }
