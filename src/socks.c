@@ -32,8 +32,8 @@ static int recv_from_chain(struct ftor_event *event) {
 
     int i = 0;
     for (i = 0; i < readed; ++i) {
-        context->chain_recv_buffer[prev_pos + i] = context->chain_recv_buffer[prev_pos + i] ^ context->sesskey1[context->backward_cipher_offset];
-        context->chain_recv_buffer[prev_pos + i] = context->chain_recv_buffer[prev_pos + i] ^ context->sesskey2[context->backward_cipher_offset++];
+        context->chain_recv_buffer[prev_pos + i] ^= context->sesskey1[context->backward_cipher_offset];
+        context->chain_recv_buffer[prev_pos + i] ^= context->sesskey2[context->backward_cipher_offset++];
         if (context->backward_cipher_offset == sizeof(context->node_sesskey)) context->backward_cipher_offset = 0;
     }
 
@@ -74,8 +74,8 @@ static int recv_from_client(struct ftor_event *event) {
 
     int i = 0;
     for (i = 0; i < readed; ++i) {
-//        context->client_recv_buffer[prev_pos + i] = context->client_recv_buffer[prev_pos + i] ^ context->sesskey2[context->forward_cipher_offset];
-//        context->client_recv_buffer[prev_pos + i] = context->client_recv_buffer[prev_pos + i] ^ context->sesskey1[context->forward_cipher_offset++];
+        context->client_recv_buffer[prev_pos + i] ^= context->sesskey2[context->forward_cipher_offset];
+        context->client_recv_buffer[prev_pos + i] ^= context->sesskey1[context->forward_cipher_offset++];
         if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
     }
 
@@ -518,11 +518,11 @@ static int nextnode_recv_from_client(struct ftor_event *event) {
 
     int i = 0;
     for (i = 0; i < readed; ++i) {
-        if (!(context->node_flags & 1) && (context->header_bytes_received <= 256)) {
+        if (!(context->node_flags & 1) && (context->header_bytes_received < 256)) {
             ++context->header_bytes_received;
             continue;
         }
-//        context->client_recv_buffer[prev_pos + i] = context->client_recv_buffer[prev_pos + i] ^ context->node_sesskey[context->forward_cipher_offset++];
+        context->client_recv_buffer[prev_pos + i] ^= context->node_sesskey[context->forward_cipher_offset++];
         if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
     }
 
@@ -544,7 +544,6 @@ static int nextnode_send_to_client(struct ftor_event *event) {
     if (bytes_sended == -1) {
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
-//    printf("sended %zd bytes to client\n", bytes_sended);
     memmove(context->chain_recv_buffer, context->chain_recv_buffer + bytes_sended, context->chain_recv_buffer_pos - bytes_sended);
     context->chain_recv_buffer_pos -= bytes_sended;
     if (context->chain_eof && !context->chain_recv_buffer_pos) {
@@ -611,6 +610,7 @@ int ftor_node_get_header(struct ftor_event *event) {
     ssize_t readed = ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
     printf("%s:%d readed=%zd\n", __FILE__, __LINE__, readed);
+    if (context->client_recv_buffer_pos < CIPHERED_NODE_PACKET_LEN) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     int error_code = 0;
     unsigned char packet[256];
     int decrypted_length = rsa_private_decrypt(context->client_recv_buffer, CIPHERED_NODE_PACKET_LEN, config->private_key, packet, &error_code);
@@ -622,7 +622,6 @@ int ftor_node_get_header(struct ftor_event *event) {
     rsa_get_last_error(err);
     printf("%s\n", err);
     printf("decrypted_length = %d\n", decrypted_length);
-    if (context->client_recv_buffer_pos < CIPHERED_NODE_PACKET_LEN) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     memmove(context->client_recv_buffer, context->client_recv_buffer + CIPHERED_NODE_PACKET_LEN, context->client_recv_buffer_pos - CIPHERED_NODE_PACKET_LEN);
     context->client_recv_buffer_pos -= CIPHERED_NODE_PACKET_LEN;
 
@@ -635,6 +634,16 @@ int ftor_node_get_header(struct ftor_event *event) {
     context->next_ip = ntohl(*(uint32_t *)(packet + 8));
     context->next_port = ntohs(*(uint16_t *)(packet + 12));
     memcpy(context->node_sesskey, packet + 14, 128);
+
+    unsigned int i = 0;
+    for (i = 0; i < context->client_recv_buffer_pos; ++i) {
+        if (!(context->node_flags & 1) && (context->header_bytes_received < CIPHERED_NODE_PACKET_LEN)) {
+            ++context->header_bytes_received;
+            continue;
+        }
+        context->client_recv_buffer[i] ^= context->node_sesskey[context->forward_cipher_offset++];
+        if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
+    }
 
     event->read_handler = NULL;
     event->write_handler = NULL;
