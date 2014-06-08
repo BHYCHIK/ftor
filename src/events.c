@@ -36,8 +36,9 @@ struct ftor_context *ftor_create_context() {
     context->next_ip = 0;
     context->next_port = 0;
     context->node_flags = 0;
-    context->header_bytes_sended = 0;
     context->header_bytes_received = 0;
+    context->forward_cipher_offset = 0;
+    context->backward_cipher_offset = 0;
     memset(&context->client_addr, 0, context->client_addr_len);
     memset(&context->sesskey1, 0, sizeof(context->sesskey1));
     memset(&context->sesskey2, 0, sizeof(context->sesskey2));

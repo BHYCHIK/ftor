@@ -78,8 +78,9 @@ struct ftor_context {
     uint32_t next_ip;
     uint16_t next_port;
     uint32_t node_flags;
-    int header_bytes_sended;
     int header_bytes_received;
+    int forward_cipher_offset;
+    int backward_cipher_offset;
 };
 
 struct ftor_context *ftor_create_context();
