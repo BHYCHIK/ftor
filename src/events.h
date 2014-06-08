@@ -73,6 +73,13 @@ struct ftor_context {
     int events_num;
     bool client_eof;
     bool chain_eof;
+
+    unsigned char node_sesskey[128];
+    uint32_t next_ip;
+    uint16_t next_port;
+    uint32_t node_flags;
+    int header_bytes_sended;
+    int header_bytes_received;
 };
 
 struct ftor_context *ftor_create_context();

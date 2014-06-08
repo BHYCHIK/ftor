@@ -11,4 +11,6 @@ int rsa_public_decrypt(unsigned char *enc_data, int data_len, unsigned char *key
 
 void rsa_get_last_error(char *msg);
 
+void rsa_cleanup();
+
 #endif

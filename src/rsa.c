@@ -80,3 +80,10 @@ void rsa_get_last_error(char *msg) {
     ERR_load_crypto_strings();
     ERR_error_string(ERR_get_error(), msg);
 }
+
+void rsa_cleanup() {
+    CRYPTO_cleanup_all_ex_data();
+    ERR_free_strings();
+    ERR_remove_state(0);
+    EVP_cleanup();
+}

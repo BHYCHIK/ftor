@@ -1,6 +1,7 @@
 #include "config.h"
 #include "mempool.h"
 #include "network.h"
+#include "rsa.h"
 
 #include <stdio.h>
 #include <signal.h>
@@ -16,5 +17,6 @@ int main() {
     ftor_reactor_init();
     ftor_start_server();
     ftor_reactor();
+    rsa_cleanup();
     return 0;
 }

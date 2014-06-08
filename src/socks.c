@@ -121,31 +121,14 @@ static void send_ok_to_client(struct ftor_event *event) {
     event->write_handler = send_ok_to_client_impl;
 }
 
-static int chain_establish_result(struct ftor_event *event) {
-    struct ftor_context *context = event->context;
-    bool eof = false;
-    bool error = false;
-    ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
-    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
-    if (event->recv_buffer_pos < 1) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
-    uint8_t res = *((uint8_t *)(event->recv_buffer));
-    if (res != 0) { //Probably handle correct?
-        printf("Chain not established ok\n");
-        return EVENT_RESULT_CONTEXT_CLOSE;
-    }
-    printf("Chain established ok\n");
-    event->read_handler = recv_from_chain;
-    event->write_handler = send_to_chain;
-    send_ok_to_client(context->client_event);
-    return recv_from_chain(event);
-}
-
 static int send_header_to_next_node(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
     ssize_t bytes_sended = send(event->socket_fd, event->send_buffer, event->send_buffer_pos, MSG_DONTWAIT);
     printf("sended %zd bytes to next node\n", bytes_sended);
     if ((size_t)bytes_sended == event->send_buffer_pos) {
-        event->read_handler = chain_establish_result;
-        event->write_handler = NULL;
+        event->read_handler = recv_from_chain;
+        event->write_handler = send_to_chain;
+        send_ok_to_client(context->client_event);
     }
     memmove(event->send_buffer, event->send_buffer + bytes_sended, event->send_buffer_pos - bytes_sended);
     event->send_buffer_pos -= bytes_sended;
@@ -471,28 +454,202 @@ int ftor_socks_get_header(struct ftor_event *event) {
     return ftor_socks_get_identd(event);
 }
 
+static int nextnode_recv_from_chain(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    bool eof = false;
+    bool error = false;
+    ftor_read_all(event->socket_fd, &context->chain_recv_buffer, &context->chain_recv_buffer_pos, &context->chain_recv_buffer_size, &eof, &error);
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
+    if (eof) {
+        printf("chain eof\n");
+        context->chain_eof = true;
+        return EVENT_RESULT_CLOSE;
+    }
+    return EVENT_RESULT_CONT;
+}
+
+static int nextnode_send_to_chain(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    ssize_t bytes_sended = send(event->socket_fd, context->client_recv_buffer, context->client_recv_buffer_pos, MSG_DONTWAIT);
+    if (bytes_sended == -1) printf("to chain errno: %s\n", strerror(errno));
+    if (bytes_sended == -1 && errno == EAGAIN) {
+        return EVENT_RESULT_CONT;
+    }
+    if (bytes_sended == -1) {
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+//    printf("sended %zd bytes to chain\n", bytes_sended);
+    memmove(context->client_recv_buffer, context->client_recv_buffer + bytes_sended, context->client_recv_buffer_pos - bytes_sended);
+    context->client_recv_buffer_pos -= bytes_sended;
+    if (context->client_eof && !context->client_recv_buffer_pos) {
+        return EVENT_RESULT_CLOSE;
+    }
+    return EVENT_RESULT_CONT;
+}
+
+static int nextnode_recv_from_client(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    bool eof = false;
+    bool error = false;
+    ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size, &eof, &error);
+//    printf("received from client\n");
+//    write(STDOUT_FILENO, context->client_recv_buffer, (int)context->client_recv_buffer_pos);
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
+    if (eof) {
+        printf("client eof\n");
+        context->client_eof = true;
+        return EVENT_RESULT_CLOSE;
+    }
+    return EVENT_RESULT_CONT;
+}
+
+static int nextnode_send_to_client(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    ssize_t bytes_sended = send(event->socket_fd, context->chain_recv_buffer, context->chain_recv_buffer_pos, MSG_DONTWAIT);
+    if (bytes_sended == -1) printf("to client errno: %s\n", strerror(errno));
+    if (bytes_sended == -1 && errno == EAGAIN) {
+        return EVENT_RESULT_CONT;
+    }
+    if (bytes_sended == -1) {
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+//    printf("sended %zd bytes to client\n", bytes_sended);
+    memmove(context->chain_recv_buffer, context->chain_recv_buffer + bytes_sended, context->chain_recv_buffer_pos - bytes_sended);
+    context->chain_recv_buffer_pos -= bytes_sended;
+    if (context->chain_eof && !context->chain_recv_buffer_pos) {
+        return EVENT_RESULT_CLOSE;
+    }
+    return EVENT_RESULT_CONT;
+}
+
+static int nextnode_recv_header_from_client(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    bool eof = false;
+    bool error = false;
+    ssize_t readed = ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size, &eof, &error);
+    context->header_bytes_received += readed;
+    if (context->header_bytes_received >= 256) event->read_handler = nextnode_recv_header_from_client;
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
+    if (eof) {
+        printf("client eof\n");
+        context->client_eof = true;
+        return EVENT_RESULT_CLOSE;
+    }
+    return EVENT_RESULT_CONT;
+}
+
+static int nextnode_send_header_to_chain(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    ssize_t bytes_sended = send(event->socket_fd, context->client_recv_buffer, context->client_recv_buffer_pos, MSG_DONTWAIT);
+    context->header_bytes_sended += bytes_sended;
+    if (context->header_bytes_sended >= 256) event->write_handler = nextnode_send_to_chain;
+    if (bytes_sended == -1) printf("to chain errno: %s\n", strerror(errno));
+    if (bytes_sended == -1 && errno == EAGAIN) {
+        return EVENT_RESULT_CONT;
+    }
+    if (bytes_sended == -1) {
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+    memmove(context->client_recv_buffer, context->client_recv_buffer + bytes_sended, context->client_recv_buffer_pos - bytes_sended);
+    context->client_recv_buffer_pos -= bytes_sended;
+    if (context->client_eof && !context->client_recv_buffer_pos) {
+        return EVENT_RESULT_CLOSE;
+    }
+    return EVENT_RESULT_CONT;
+}
+
+static int next_node_connected(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    int result = 0;
+    socklen_t result_len = sizeof(result);
+    if (getsockopt(event->socket_fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0) {
+        // error, fail somehow, close socket
+        printf("%d: cant connect to next node\n", __LINE__);
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    if (result != 0) {
+        // connection failed; error code is in 'result'
+        printf("%d: cant connect to next node\n", __LINE__);
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    printf("Connection established with next node!\n");
+    if (context->node_flags & 1) {
+        event->read_handler = nextnode_recv_from_chain;
+        event->write_handler = nextnode_send_to_chain;
+        context->client_event->read_handler = nextnode_recv_from_client;
+        context->client_event->write_handler = nextnode_send_to_client;
+    }
+    else {
+        event->read_handler = nextnode_recv_from_chain;
+        event->write_handler = nextnode_send_header_to_chain;
+        context->client_event->read_handler = nextnode_recv_header_from_client;
+        context->client_event->write_handler = nextnode_send_to_client;
+    }
+    return EVENT_RESULT_CONT;
+}
+
+static int connect_to_next_node(struct ftor_context *context) {
+    printf("connect to next node\n");
+
+    struct sockaddr_in next_node_addr;
+
+    int next_node_socket = socket(AF_INET, SOCK_STREAM, 0);
+    next_node_addr.sin_addr.s_addr = htonl(context->next_ip);
+    next_node_addr.sin_family = AF_INET;
+    next_node_addr.sin_port = htons(context->next_port);
+
+    setnonblock(next_node_socket);
+
+    if (connect(next_node_socket, (struct sockaddr *)&next_node_addr, sizeof(next_node_addr)) < 0 && errno != EINPROGRESS) {
+        printf("%d: cant connect to next node flags(%d) port(%d): %s\n", __LINE__, context->node_flags, context->next_port, strerror(errno));
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+
+    struct ftor_event *next_node_event = ftor_create_event(next_node_socket, context);
+    next_node_event->read_handler = NULL;
+    next_node_event->write_handler = next_node_connected;
+
+    add_event_to_reactor(next_node_event);
+    return EVENT_RESULT_CONT;
+}
+
 int ftor_node_get_header(struct ftor_event *event) {
     struct ftor_context *context = event->context;
     struct conf *config = get_conf();
     context->client_event = event;
     bool eof = false;
     bool error = false;
-    ssize_t readed = ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
+    ssize_t readed = ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
     printf("%s:%d readed=%zd\n", __FILE__, __LINE__, readed);
     int error_code = 0;
     unsigned char packet[256];
-    int decrypted_length = rsa_private_decrypt(event->recv_buffer, CIPHERED_NODE_PACKET_LEN, config->private_key, packet, &error_code);
+    int decrypted_length = rsa_private_decrypt(context->client_recv_buffer, CIPHERED_NODE_PACKET_LEN, config->private_key, packet, &error_code);
     if (error_code) {
         printf("Private Decrypt failed ");
         return EVENT_RESULT_CONTEXT_CLOSE;
     }
+    char err[256];
+    rsa_get_last_error(err);
+    printf("%s\n", err);
     printf("decrypted_length = %d\n", decrypted_length);
-    if (event->recv_buffer_pos < CIPHERED_NODE_PACKET_LEN) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
-    memmove(event->recv_buffer, event->recv_buffer + CIPHERED_NODE_PACKET_LEN, event->recv_buffer_pos - CIPHERED_NODE_PACKET_LEN);
-    event->recv_buffer_pos -= CIPHERED_NODE_PACKET_LEN;
+    if (context->client_recv_buffer_pos < CIPHERED_NODE_PACKET_LEN) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
+    memmove(context->client_recv_buffer, context->client_recv_buffer + CIPHERED_NODE_PACKET_LEN, context->client_recv_buffer_pos - CIPHERED_NODE_PACKET_LEN);
+    context->client_recv_buffer_pos -= CIPHERED_NODE_PACKET_LEN;
+
+    uint32_t control_sum = ntohl(*(uint32_t *)(packet + 0));
+    if (control_sum != 0xDEADBEAF) {
+        printf("BAD CONTROL SUM: %X", control_sum);
+        return EVENT_RESULT_CONTEXT_CLOSE;
+    }
+    context->node_flags = ntohl(*(uint32_t *)(packet + 4));
+    context->next_ip = ntohl(*(uint32_t *)(packet + 8));
+    context->next_port = ntohs(*(uint16_t *)(packet + 12));
+    memcpy(context->node_sesskey, packet + 14, 128);
 
     event->read_handler = NULL;
     event->write_handler = NULL;
-    return EVENT_RESULT_CONT;
+    return connect_to_next_node(context);
 }

@@ -33,9 +33,15 @@ struct ftor_context *ftor_create_context() {
     context->events_num = 0;
     context->client_eof = false;
     context->chain_eof = false;
+    context->next_ip = 0;
+    context->next_port = 0;
+    context->node_flags = 0;
+    context->header_bytes_sended = 0;
+    context->header_bytes_received = 0;
     memset(&context->client_addr, 0, context->client_addr_len);
     memset(&context->sesskey1, 0, sizeof(context->sesskey1));
     memset(&context->sesskey2, 0, sizeof(context->sesskey2));
+    memset(&context->node_sesskey, 0, sizeof(context->node_sesskey));
     return context;
 }
 
