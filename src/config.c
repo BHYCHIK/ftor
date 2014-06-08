@@ -18,7 +18,8 @@ static bool configured = false;
 
 enum conf_type {
     ct_int,
-    ct_string
+    ct_string,
+    ct_file
 };
 
 struct config_parser {
@@ -35,7 +36,8 @@ static struct conf config = {
     .designator_port = 27017,
     .max_epoll_queue = 64,
     .resolver_port = 27018,
-    .resolver_ip_addr = "127.0.0.1"
+    .resolver_ip_addr = "127.0.0.1",
+    .private_key = ""
 };
 
 static struct config_parser parser[] = {
@@ -46,7 +48,8 @@ static struct config_parser parser[] = {
     {"resolver_port", ct_int, &config.resolver_port},
     {"resolver_ip_addr", ct_string, config.resolver_ip_addr},
     {"max_epoll_queue", ct_int, &config.max_epoll_queue},
-    {"node_port", ct_int, &config.node_port}
+    {"node_port", ct_int, &config.node_port},
+    {"private_key", ct_file, &config.private_key}
 };
 
 static bool read_config(const char *cfg_file);
@@ -60,17 +63,23 @@ bool set_config_file(const char *cfg) {
 static void parse_config_line(const char *key, const char *value) {
     if (!strcasecmp("include", key)) read_config(value);
     int options_num = sizeof(parser) / sizeof(struct config_parser);
+    int fd = -1;
     for (int i = 0; i < options_num; ++i) {
         if (!strcasecmp(key, parser[i].opt_name)) {
             switch (parser[i].opt_type) {
             case ct_int:
-               *((int *)parser[i].opt_val) = atoi(value);
-               break;
+                *((int *)parser[i].opt_val) = atoi(value);
+                break;
             case ct_string:
-               strncpy(parser[i].opt_val, value, CONF_STR_MAX_SIZE);
-               break;
-            }
+                strncpy(parser[i].opt_val, value, CONF_STR_MAX_SIZE);
+                break;
+            case ct_file:
+                fd = open(value, O_RDONLY);
+                read(fd, parser[i].opt_val, CONF_STR_MAX_SIZE);
+                close(fd);
+                fd = -1;
             break;
+            }
         }
     }
 }
