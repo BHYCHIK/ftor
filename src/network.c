@@ -19,6 +19,7 @@ static int epoll_fd;
 
 static bool running_server = true;
 static struct ftor_event *incomming_connection_event = NULL;
+static struct ftor_event *node_connection_event = NULL;
 
 void stop_server() {
     running_server = false;
@@ -26,6 +27,12 @@ void stop_server() {
 
 static int incomming_connection_event_destructor(struct ftor_event *event) {
     incomming_connection_event = NULL;
+    event->destuction_handler = NULL;
+    return EVENT_RESULT_CONT;
+}
+
+static int node_connection_event_destructor(struct ftor_event *event) {
+    node_connection_event = NULL;
     event->destuction_handler = NULL;
     return EVENT_RESULT_CONT;
 }
@@ -82,6 +89,9 @@ void ftor_reactor() {
         if (!running_server && incomming_connection_event) {
             ftor_del_event(incomming_connection_event);
         }
+        if (!running_server && node_connection_event) {
+            ftor_del_event(node_connection_event);
+        }
     }
     if (random_fd != -1) close(random_fd);
 }
@@ -92,7 +102,7 @@ int add_event_to_reactor(struct ftor_event *event_to_add) {
     listenev.events = EPOLLIN | EPOLLOUT;
     listenev.data.ptr = event_to_add;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_to_add->socket_fd, &listenev) < 0) {
-        printf("Epoll fd add");
+        printf("Epoll fd add\n");
         return -1;
     }
     return 0;
@@ -110,7 +120,7 @@ void setnonblock(int fd) {
     }
 }
 
-static int client_connecton_accepter(struct ftor_event *event) {
+static int accept_connection(struct ftor_event *event, ftor_handler read_handler) {
     struct ftor_context *context = ftor_create_context();
     int f = accept(event->socket_fd, (struct sockaddr *)&context->client_addr, &context->client_addr_len);
     if (f == -1) {
@@ -122,41 +132,62 @@ static int client_connecton_accepter(struct ftor_event *event) {
     context->incoming_fd = f;
 
     struct ftor_event *client_event = ftor_create_event(f, context);
-    client_event->read_handler = ftor_socks_get_header;
+    client_event->read_handler = read_handler;
     client_event->write_handler = NULL;
 
     context->client_event = client_event;
 
     add_event_to_reactor(client_event);
-
-    printf("connection accepted\n");
     return 0;
+}
+
+static int client_connecton_accepter(struct ftor_event *event) {
+    printf("In client_connecton_accepter\n");
+    int rc = accept_connection(event, ftor_socks_get_header);
+    printf("client connection accepted\n");
+    return rc;
+}
+
+static int node_connecton_accepter(struct ftor_event *event) {
+    int rc = accept_connection(event, ftor_node_get_header);
+    printf("node connection accepted\n");
+    return rc;
+}
+
+int get_listening_sock(const char *ip_addr, int port) {
+    struct sockaddr_in listening_addr;
+
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    inet_aton(ip_addr, &listening_addr.sin_addr);
+    listening_addr.sin_family = AF_INET;
+    listening_addr.sin_port = htons(port);
+
+    setnonblock(sock);
+    if (bind(sock, (struct sockaddr *)&listening_addr, sizeof(listening_addr))) {
+        printf("Cannot bind %s\n", strerror(errno));
+        assert(0);
+    }
+    if (listen(sock, 0) < 0) {
+        printf("Cannot listen %s\n", strerror(errno));
+        assert(0);
+    }
+    printf("listening %d\n", port);
+    return sock;
 }
 
 void ftor_start_server() {
     struct conf *config = get_conf();
 
-    struct sockaddr_in listening_addr;
-
-    int listening_socket = socket(AF_INET, SOCK_STREAM, 0);
-    inet_aton(config->listening_ip_addr, &listening_addr.sin_addr);
-    listening_addr.sin_family = AF_INET;
-    listening_addr.sin_port = htons(config->listening_port);
-
-    setnonblock(listening_socket);
-    if (bind(listening_socket, (struct sockaddr *)&listening_addr, sizeof(listening_addr))) {
-        printf("Cannot bind %s\n", strerror(errno));
-        assert(0);
-    }
-    if (listen(listening_socket, 0) < 0) {
-        printf("Cannot listen %s\n", strerror(errno));
-        assert(0);
-    }
-
-    incomming_connection_event = ftor_create_event(listening_socket, NULL);
+    incomming_connection_event = ftor_create_event(get_listening_sock(config->listening_ip_addr, config->listening_port), NULL);
     incomming_connection_event->read_handler = client_connecton_accepter;
     incomming_connection_event->write_handler = NULL;
     incomming_connection_event->destuction_handler = incomming_connection_event_destructor;
 
+    node_connection_event = ftor_create_event(get_listening_sock(config->listening_ip_addr, config->node_port), NULL);
+    node_connection_event->read_handler = node_connecton_accepter;
+    node_connection_event->write_handler = NULL;
+    node_connection_event->destuction_handler = node_connection_event_destructor;
+
     add_event_to_reactor(incomming_connection_event);
+    add_event_to_reactor(node_connection_event);
 }

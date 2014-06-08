@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #define STABLE_HEADER_LEN 8
+#define CIPHERED_NODE_PACKET_LEN 256
 
 int random_fd = -1;
 
@@ -153,12 +154,12 @@ static int send_header_to_next_node(struct ftor_event *event) {
     return EVENT_RESULT_CONT;
 }
 
-//packet must be 256 bytes
+//packet must be CIPHERED_NODE_PACKET_LEN (256) bytes
 static void gen_node_header(unsigned char *packet, uint32_t flags, uint32_t next_ip, unsigned char *sess_key, int sess_key_len, unsigned char *pubkey) {
     if (random_fd == -1) {
         random_fd = open("/dev/urandom", O_RDONLY);
     }
-    const int plain_header_len = 140; // Must be less then 256
+    const int plain_header_len = 140; // Must be less then CIPHERED_NODE_PACKET_LEN (256)
     unsigned char plain[plain_header_len];
     uint32_t magic_num = htonl(0xDEADBEAF);
     uint32_t next_ip_n = htonl(next_ip);
@@ -176,13 +177,13 @@ static void gen_node_header(unsigned char *packet, uint32_t flags, uint32_t next
     char err[256];
     rsa_get_last_error(err);
     printf("encr_len: %d\n%s\n", encr_len, err);
-    assert(encr_len == 256);
+    assert(encr_len == CIPHERED_NODE_PACKET_LEN);
 }
 
 static void create_next_node_request(struct ftor_event *event) {
     struct ftor_context *context = event->context;
-    unsigned char pack1[256];
-    unsigned char pack2[256];
+    unsigned char pack1[CIPHERED_NODE_PACKET_LEN];
+    unsigned char pack2[CIPHERED_NODE_PACKET_LEN];
     gen_node_header(pack1, 0, context->chain_ip2, context->sesskey1, sizeof(context->sesskey1), (unsigned char *)context->chain_pubkey1);
     gen_node_header(pack2, 0, context->peer_address, context->sesskey2, sizeof(context->sesskey2), (unsigned char *)context->chain_pubkey2);
     if (event->send_buffer_size < sizeof(pack1) + sizeof(pack2)) {
@@ -457,7 +458,7 @@ int ftor_socks_get_header(struct ftor_event *event) {
     bool error = false;
     ssize_t readed = ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
-    printf("readed=%zd\n", readed);
+    printf("%s:%d readed=%zd\n", __FILE__, __LINE__, readed);
     if (event->recv_buffer_pos < STABLE_HEADER_LEN) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
     context->peer_port = ntohs(*((uint16_t *)(event->recv_buffer + 2)));
     context->peer_address = ntohl(*((uint32_t *)(event->recv_buffer + 4)));
@@ -467,4 +468,20 @@ int ftor_socks_get_header(struct ftor_event *event) {
     event->read_handler = ftor_socks_get_identd;
     event->write_handler = NULL;
     return ftor_socks_get_identd(event);
+}
+
+int ftor_node_get_header(struct ftor_event *event) {
+    struct ftor_context *context = event->context;
+    context->client_event = event;
+    bool eof = false;
+    bool error = false;
+    ssize_t readed = ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
+    if (error) return EVENT_RESULT_CONTEXT_CLOSE;
+    printf("%s:%d readed=%zd\n", __FILE__, __LINE__, readed);
+    if (event->recv_buffer_pos < CIPHERED_NODE_PACKET_LEN) return eof ? EVENT_RESULT_CONTEXT_CLOSE : EVENT_RESULT_CONT;
+    memmove(event->recv_buffer, event->recv_buffer + CIPHERED_NODE_PACKET_LEN, event->recv_buffer_pos - CIPHERED_NODE_PACKET_LEN);
+    event->recv_buffer_pos -= CIPHERED_NODE_PACKET_LEN;
+    event->read_handler = NULL;
+    event->write_handler = NULL;
+    return EVENT_RESULT_CONT;
 }
