@@ -1,7 +1,7 @@
 .PHONY: all install
 
 SUBDIRS = src
-CFLAGS = -Werror -Wall -Wextra -pedantic --std=gnu99
+CFLAGS = -Werror -Wall -Wextra -pedantic --std=gnu99 -O3 -fno-strict-aliasing
 export CFLAGS
 
 all:build_sources

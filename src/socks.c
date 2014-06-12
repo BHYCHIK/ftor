@@ -23,6 +23,7 @@ int random_fd = -1;
 }
 
 static int recv_from_chain(struct ftor_event *event) {
+    struct conf *config = get_conf();
     struct ftor_context *context = event->context;
     bool eof = false;
     bool error = false;
@@ -30,11 +31,13 @@ static int recv_from_chain(struct ftor_event *event) {
     ssize_t readed = ftor_read_all(event->socket_fd, &context->chain_recv_buffer, &context->chain_recv_buffer_pos, &context->chain_recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
 
-    int i = 0;
-    for (i = 0; i < readed; ++i) {
-        context->chain_recv_buffer[prev_pos + i] ^= context->sesskey1[context->backward_cipher_offset];
-        context->chain_recv_buffer[prev_pos + i] ^= context->sesskey2[context->backward_cipher_offset++];
-        if (context->backward_cipher_offset == sizeof(context->node_sesskey)) context->backward_cipher_offset = 0;
+    if (config->enable_cipher) {
+        int i = 0;
+        for (i = 0; i < readed; ++i) {
+            context->chain_recv_buffer[prev_pos + i] ^= context->sesskey1[context->backward_cipher_offset];
+            context->chain_recv_buffer[prev_pos + i] ^= context->sesskey2[context->backward_cipher_offset++];
+            if (context->backward_cipher_offset == sizeof(context->node_sesskey)) context->backward_cipher_offset = 0;
+        }
     }
 
     if (eof) {
@@ -65,6 +68,7 @@ static int send_to_chain(struct ftor_event *event) {
 }
 
 static int recv_from_client(struct ftor_event *event) {
+    struct conf *config = get_conf();
     struct ftor_context *context = event->context;
     bool eof = false;
     bool error = false;
@@ -72,11 +76,13 @@ static int recv_from_client(struct ftor_event *event) {
     ssize_t readed = ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
 
-    int i = 0;
-    for (i = 0; i < readed; ++i) {
-        context->client_recv_buffer[prev_pos + i] ^= context->sesskey2[context->forward_cipher_offset];
-        context->client_recv_buffer[prev_pos + i] ^= context->sesskey1[context->forward_cipher_offset++];
-        if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
+    if (config->enable_cipher) {
+        int i = 0;
+        for (i = 0; i < readed; ++i) {
+            context->client_recv_buffer[prev_pos + i] ^= context->sesskey2[context->forward_cipher_offset];
+            context->client_recv_buffer[prev_pos + i] ^= context->sesskey1[context->forward_cipher_offset++];
+            if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
+        }
     }
 
     if (eof) {
@@ -150,7 +156,7 @@ static int send_header_to_next_node(struct ftor_event *event) {
 }
 
 //packet must be CIPHERED_NODE_PACKET_LEN (256) bytes
-static void gen_node_header(unsigned char *packet, uint32_t flags, uint32_t next_ip, uint16_t port, unsigned char *sess_key, int sess_key_len, unsigned char *pubkey) {
+static bool gen_node_header(unsigned char *packet, uint32_t flags, uint32_t next_ip, uint16_t port, unsigned char *sess_key, int sess_key_len, unsigned char *pubkey) {
     if (random_fd == -1) {
         random_fd = open("/dev/urandom", O_RDONLY);
     }
@@ -160,7 +166,9 @@ static void gen_node_header(unsigned char *packet, uint32_t flags, uint32_t next
     uint32_t next_ip_n = htonl(next_ip);
     uint16_t next_port_n = htons(port);
     uint32_t flags_n = htonl(flags);
-    read(random_fd, sess_key, sess_key_len);
+    if (read(random_fd, sess_key, sess_key_len) < sess_key_len) {
+        return false;
+    }
     int pos = 0;
     add_to_buf(plain, pos, &magic_num, sizeof(magic_num));
     add_to_buf(plain, pos, &flags_n, sizeof(flags_n));
@@ -175,21 +183,24 @@ static void gen_node_header(unsigned char *packet, uint32_t flags, uint32_t next
     rsa_get_last_error(err);
     printf("encr_len: %d\n%s\n", encr_len, err);
     assert(encr_len == CIPHERED_NODE_PACKET_LEN);
+    return true;
 }
 
-static void create_next_node_request(struct ftor_event *event) {
+static bool create_next_node_request(struct ftor_event *event) {
     struct ftor_context *context = event->context;
     struct conf *config = get_conf();
     unsigned char pack1[CIPHERED_NODE_PACKET_LEN];
     unsigned char pack2[CIPHERED_NODE_PACKET_LEN];
-    gen_node_header(pack1, 0, context->chain_ip2, (uint16_t)config->node_port, context->sesskey1, sizeof(context->sesskey1), (unsigned char *)context->chain_pubkey1);
-    gen_node_header(pack2, 1, context->peer_address, (uint16_t)context->peer_port, context->sesskey2, sizeof(context->sesskey2), (unsigned char *)context->chain_pubkey2);
+    uint32_t cipher_bit = config->enable_cipher ? NODE_HEADER_FLAG_ENABLE_CIPHER : 0;
+    if (!gen_node_header(pack1, cipher_bit, context->chain_ip2, (uint16_t)config->node_port, context->sesskey1, sizeof(context->sesskey1), (unsigned char *)context->chain_pubkey1)) return false;
+    if (!gen_node_header(pack2, cipher_bit | NODE_HEADER_FLAG_EXIT_NODE, context->peer_address, (uint16_t)context->peer_port, context->sesskey2, sizeof(context->sesskey2), (unsigned char *)context->chain_pubkey2)) return false;
     if (event->send_buffer_size < sizeof(pack1) + sizeof(pack2)) {
         event->send_buffer = (unsigned char *)realloc((void *)event->send_buffer, sizeof(pack1) + sizeof(pack2));
         event->send_buffer_size = sizeof(pack1) + sizeof(pack2);
     }
     add_to_buf(event->send_buffer, event->send_buffer_pos, pack1, sizeof(pack1));
     add_to_buf(event->send_buffer, event->send_buffer_pos, pack2, sizeof(pack2));
+    return true;
 }
 
 static int connected_to_node(struct ftor_event *event) {
@@ -208,7 +219,7 @@ static int connected_to_node(struct ftor_event *event) {
     }
 
     printf("Connection established with next node!\n");
-    create_next_node_request(event);
+    if (!create_next_node_request(event)) return EVENT_RESULT_CONTEXT_CLOSE;
     event->read_handler = NULL;
     event->write_handler = send_header_to_next_node;
     return EVENT_RESULT_CONT;
@@ -476,10 +487,12 @@ static int nextnode_recv_from_chain(struct ftor_event *event) {
     ssize_t readed = ftor_read_all(event->socket_fd, &context->chain_recv_buffer, &context->chain_recv_buffer_pos, &context->chain_recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
 
-    int i = 0;
-    for (i = 0; i < readed; ++i) {
-        context->chain_recv_buffer[prev_pos + i] = context->chain_recv_buffer[prev_pos + i] ^ context->node_sesskey[context->backward_cipher_offset++];
-        if (context->backward_cipher_offset == sizeof(context->node_sesskey)) context->backward_cipher_offset = 0;
+    if (context->node_flags & NODE_HEADER_FLAG_ENABLE_CIPHER) {
+        int i = 0;
+        for (i = 0; i < readed; ++i) {
+            context->chain_recv_buffer[prev_pos + i] = context->chain_recv_buffer[prev_pos + i] ^ context->node_sesskey[context->backward_cipher_offset++];
+            if (context->backward_cipher_offset == sizeof(context->node_sesskey)) context->backward_cipher_offset = 0;
+        }
     }
 
     if (eof) {
@@ -516,14 +529,16 @@ static int nextnode_recv_from_client(struct ftor_event *event) {
     ssize_t readed = ftor_read_all(event->socket_fd, &context->client_recv_buffer, &context->client_recv_buffer_pos, &context->client_recv_buffer_size, &eof, &error);
     if (error) return EVENT_RESULT_CONTEXT_CLOSE;
 
-    int i = 0;
-    for (i = 0; i < readed; ++i) {
-        if (!(context->node_flags & 1) && (context->header_bytes_received < 256)) {
-            ++context->header_bytes_received;
-            continue;
+    if (context->node_flags & NODE_HEADER_FLAG_ENABLE_CIPHER) {
+        int i = 0;
+        for (i = 0; i < readed; ++i) {
+            if (!(context->node_flags & NODE_HEADER_FLAG_EXIT_NODE) && (context->header_bytes_received < 256)) {
+                ++context->header_bytes_received;
+                continue;
+            }
+            context->client_recv_buffer[prev_pos + i] ^= context->node_sesskey[context->forward_cipher_offset++];
+            if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
         }
-        context->client_recv_buffer[prev_pos + i] ^= context->node_sesskey[context->forward_cipher_offset++];
-        if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
     }
 
     if (eof) {
@@ -635,14 +650,16 @@ int ftor_node_get_header(struct ftor_event *event) {
     context->next_port = ntohs(*(uint16_t *)(packet + 12));
     memcpy(context->node_sesskey, packet + 14, 128);
 
-    unsigned int i = 0;
-    for (i = 0; i < context->client_recv_buffer_pos; ++i) {
-        if (!(context->node_flags & 1) && (context->header_bytes_received < CIPHERED_NODE_PACKET_LEN)) {
-            ++context->header_bytes_received;
-            continue;
+    if (context->node_flags & NODE_HEADER_FLAG_ENABLE_CIPHER) {
+        unsigned int i = 0;
+        for (i = 0; i < context->client_recv_buffer_pos; ++i) {
+            if (!(context->node_flags & NODE_HEADER_FLAG_EXIT_NODE) && (context->header_bytes_received < CIPHERED_NODE_PACKET_LEN)) {
+                ++context->header_bytes_received;
+                continue;
+            }
+            context->client_recv_buffer[i] ^= context->node_sesskey[context->forward_cipher_offset++];
+            if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
         }
-        context->client_recv_buffer[i] ^= context->node_sesskey[context->forward_cipher_offset++];
-        if (context->forward_cipher_offset == sizeof(context->node_sesskey)) context->forward_cipher_offset = 0;
     }
 
     event->read_handler = NULL;

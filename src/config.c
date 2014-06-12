@@ -10,7 +10,7 @@
 
 #include "config.h"
 
-#define DEFAULT_CONFIG_FILE "/etc/ftor.conf"
+#define DEFAULT_CONFIG_FILE "/etc/ftor/ftor.conf"
 #define STRSZ(str) (str),(sizeof(str)-1)
 
 static char config_file[1026] = DEFAULT_CONFIG_FILE;
@@ -37,6 +37,7 @@ static struct conf config = {
     .max_epoll_queue = 64,
     .resolver_port = 27018,
     .resolver_ip_addr = "127.0.0.1",
+    .enable_cipher = 1,
     .private_key = ""
 };
 
@@ -49,6 +50,7 @@ static struct config_parser parser[] = {
     {"resolver_ip_addr", ct_string, config.resolver_ip_addr},
     {"max_epoll_queue", ct_int, &config.max_epoll_queue},
     {"node_port", ct_int, &config.node_port},
+    {"enable_cipher", ct_int, &config.enable_cipher},
     {"private_key", ct_file, &config.private_key}
 };
 
@@ -88,7 +90,9 @@ static void parse_config_line(const char *key, const char *value) {
 static bool read_config(const char *cfg_file) {
     FILE *f = fopen(cfg_file, "rb");
     if (f == NULL) {
-        write(STDERR_FILENO, STRSZ("Cannot read config file\n"));
+        if (write(STDERR_FILENO, STRSZ("Cannot read config file\n")) < 0) {
+            abort();
+        }
         exit(0);
     }
     char buf[4096];
