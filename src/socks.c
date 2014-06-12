@@ -437,7 +437,7 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
     printf("idented started\n");
     struct ftor_context *context = event->context;
     assert(context->state == socks_header_received_state);
-    unsigned char *start = event->recv_buffer + event->recv_buffer_pos;
+    unsigned char *start = event->recv_buffer;
     bool eof = false;
     bool error = false;
     ftor_read_all(event->socket_fd, &event->recv_buffer, &event->recv_buffer_pos, &event->recv_buffer_size, &eof, &error);
@@ -445,8 +445,7 @@ static int ftor_socks_get_identd(struct ftor_event *event) {
     unsigned char *stop = event->recv_buffer + event->recv_buffer_pos;
     bool ended = false;
     for (; start <= stop; ++start) {
-        printf("identd byte: %u", *start);
-        if (*start == '\0' || *start == 1) {
+        if (*start == '\0') {
             ended = true;
             stop = start;
             break;

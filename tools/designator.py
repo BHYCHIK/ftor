@@ -71,7 +71,7 @@ def process_request(conn, ip_addr):
 
 def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(('127.0.0.1', 27017))
+    s.bind(('0.0.0.0', 27017))
     s.listen(1)
     while True:
         finish_subtasks()
