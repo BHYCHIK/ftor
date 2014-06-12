@@ -1,1 +1,1 @@
-sudo apt-get install openssl libssl-dev
+sudo apt-get install openssl libssl-dev memcached python-memcache

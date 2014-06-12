@@ -4,12 +4,14 @@ import os
 import sys
 import struct
 import ipaddr
+import memcache
+import json
+
+with_memcached = True
 
 def get_info(domain, type):
     if type == 'A':
         return '127.0.0.1'
-    else:
-        return 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy8Dbv8prpJ/0kKhlGeJYozo2t60EG8L0561g13R29LvMR5hyvGZlGJpmn65+A4xHXInJYiPuKzrKUnApeLZ+vw1HocOAZtWK0z3r26uA8kQYOKX9Qt/DbCdvsF9wF8gRK0ptx9M6R13NvBxvVQApfc9jB9nTzphOgM4JiEYvlV8FLhg9yZovMYd6Wwf3aoXK891VQxTr/kQYoq1Yp+68i6T4nNq7NWC+UNVjQHxNQMQMzU6lWCX8zyg3yH88OAQkUXIXKfQ+NkvYQ1cxaMoVPpY72+eVthKzpMeyHkBn7ciumk5qgLTEJAfWZpe4f4eFZj/Rc8Y8Jj2IS5kVPjUywQIDAQAB'
     answer = dns.resolver.query(domain, type)
     for rdata in answer:
         return rdata
@@ -28,6 +30,32 @@ def get_public_key(domain):
         domain_key = domain_key + i + '\n'
     domain_key = '-----BEGIN PUBLIC KEY-----\n' + domain_key + '-----END PUBLIC KEY-----\n'
     return domain_key
+
+def check_cache(mc_conn, domain):
+    if mc_conn is None:
+        return (False, None, None)
+    cached_json = None
+    try:
+        cached_json = mc_conn.get(domain)
+    except Exception as e:
+        print e
+        return (False, None, None)
+    if cached_json is None:
+        return (False, None, None)
+    print 'found for %s in cache: %s' % (domain, cached_json)
+    cached = json.loads(cached_json)
+    return (True, cached["ip"], cached["key"].encode('utf-8'))
+
+def store_to_mc(mc_conn, domain, ip, pubkey):
+    if mc_conn is None:
+        return
+    cached = dict()
+    cached["ip"] = ip
+    cached["key"] = pubkey
+    cached["domain"] = domain
+    cached_json = json.dumps(cached)
+    mc_conn.set(key = domain, val = cached_json, time = 3 * 60)
+    print 'for %s stored %s' % (domain, cached_json)
 
 def make_reply(conn):
     header_size = 12
@@ -55,13 +83,30 @@ def make_reply(conn):
 
     print "domain1: %s\ndomain2: %s" % (domain1, domain2)
 
-    pubkey1 = get_public_key(domain1)
-    pubkey2 = get_public_key(domain2)
-    ip1 = int(ipaddr.IPv4Address(str(get_info(domain1, 'A'))))
-    ip2 = int(ipaddr.IPv4Address(str(get_info(domain2, 'A'))))
+    found_in_cache = False
+    mc_conn = None
+    if with_memcached:
+        mc_conn = memcache.Client(['127.0.0.1:11211'], debug=0)
+        (found_in_cache, ip1, pubkey1) = check_cache(mc_conn, domain1)
+    if not found_in_cache:
+        pubkey1 = get_public_key(domain1)
+        ip1 = int(ipaddr.IPv4Address(str(get_info(domain1, 'A'))))
+        if with_memcached:
+            store_to_mc(mc_conn, domain1, ip1, pubkey1)
+
+    found_in_cache = False
+    if with_memcached:
+        (found_in_cache, ip2, pubkey2) = check_cache(mc_conn, domain2)
+    if not found_in_cache:
+        pubkey2 = get_public_key(domain2)
+        ip2 = int(ipaddr.IPv4Address(str(get_info(domain2, 'A'))))
+        if with_memcached:
+            store_to_mc(mc_conn, domain2, ip2, pubkey2)
+    if mc_conn:
+        mc_conn.disconnect_all()
+        mc_conn = None
 
     result_packet_len = 17 + len(pubkey1) + len(pubkey2)
-    print result_packet_len
     reply = struct.pack('!IBIIHH', result_packet_len, 0, ip1, ip2, len(pubkey1), len(pubkey2))
     reply = reply + pubkey1 + pubkey2
     return reply
@@ -71,7 +116,9 @@ def process_request(conn):
     reply = ''
     try:
         reply = make_reply(conn)
-    except Exception:
+    except Exception as e:
+        #print e
+        raise
         reply = struct.pack('!IB', 5, 1)
     try:
         conn.send(reply)
