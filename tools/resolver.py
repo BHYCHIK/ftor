@@ -10,8 +10,6 @@ import json
 with_memcached = True
 
 def get_info(domain, type):
-    if type == 'A':
-        return '127.0.0.1'
     answer = dns.resolver.query(domain, type)
     for rdata in answer:
         return rdata
@@ -36,7 +34,7 @@ def check_cache(mc_conn, domain):
         return (False, None, None)
     cached_json = None
     try:
-        cached_json = mc_conn.get(domain)
+        cached_json = mc_conn.get('RESOLVER__' + domain)
     except Exception as e:
         print e
         return (False, None, None)
@@ -50,11 +48,11 @@ def store_to_mc(mc_conn, domain, ip, pubkey):
     if mc_conn is None:
         return
     cached = dict()
-    cached["ip"] = ip
-    cached["key"] = pubkey
-    cached["domain"] = domain
+    cached['ip'] = ip
+    cached['key'] = pubkey
+    cached['domain'] = domain
     cached_json = json.dumps(cached)
-    mc_conn.set(key = domain, val = cached_json, time = 3 * 60)
+    mc_conn.set(key = 'RESOLVER__' + domain, val = cached_json, time = 3 * 60)
     print 'for %s stored %s' % (domain, cached_json)
 
 def make_reply(conn):
@@ -102,7 +100,7 @@ def make_reply(conn):
         ip2 = int(ipaddr.IPv4Address(str(get_info(domain2, 'A'))))
         if with_memcached:
             store_to_mc(mc_conn, domain2, ip2, pubkey2)
-    if mc_conn:
+    if mc_conn is not None:
         mc_conn.disconnect_all()
         mc_conn = None
 
@@ -117,8 +115,7 @@ def process_request(conn):
     try:
         reply = make_reply(conn)
     except Exception as e:
-        #print e
-        raise
+        print e
         reply = struct.pack('!IB', 5, 1)
     try:
         conn.send(reply)
