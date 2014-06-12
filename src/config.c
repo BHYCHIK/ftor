@@ -45,7 +45,7 @@ static struct config_parser parser[] = {
     {"listening_port", ct_int, &config.listening_port},
     {"listening_ip_addr", ct_string, config.listening_ip_addr},
     {"designator_port", ct_int, &config.listening_port},
-    {"designator_ip_addr", ct_string, config.listening_ip_addr},
+    {"designator_ip_addr", ct_string, config.designator_ip_addr},
     {"resolver_port", ct_int, &config.resolver_port},
     {"resolver_ip_addr", ct_string, config.resolver_ip_addr},
     {"max_epoll_queue", ct_int, &config.max_epoll_queue},
