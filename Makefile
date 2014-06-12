@@ -19,3 +19,21 @@ build_sources:
 	for sdir in $(SUBDIRS); do \
 		$(MAKE) -C $$sdir -e build_sources ;\
 	done
+
+install:
+	mkdir -p /etc/ftor;
+	@if [ -f /etc/ftor/ftor.conf ];\
+	then\
+		echo "Config exists.";\
+	else\
+		echo "Config does not exist. Coping example.";\
+		cp ./ftor.conf.example /etc/ftor/ftor.conf;\
+	fi
+	@if [ -f /etc/ftor/private_key.example ];\
+	then \
+		echo "Example of private key exists.";\
+	else\
+		echo "Example of private key does not exist. Coping example.";\
+		cp ./private_key.example /etc/ftor/private_key.example;\
+	fi
+

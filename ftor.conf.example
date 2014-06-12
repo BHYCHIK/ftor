@@ -1,0 +1,10 @@
+private_key /etc/ftor/private_key.example
+listening_ip_addr 0.0.0.0
+listening_port 27015
+node_port 27016
+max_epoll_queue 1024
+resolver_ip_addr 127.0.0.1
+resolver_port 27018
+designator_ip_addr 109.173.124.170
+designator_port 27017
+enable_cipher 1
