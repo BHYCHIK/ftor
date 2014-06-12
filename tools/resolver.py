@@ -10,8 +10,10 @@ import json
 with_memcached = True
 
 def get_info(domain, type):
+    print 'getting info for domain %s type %s' % (domain, type)
     answer = dns.resolver.query(domain, type)
     for rdata in answer:
+        print 'result found'
         return rdata
     return None
 
@@ -92,6 +94,8 @@ def make_reply(conn):
         if with_memcached:
             store_to_mc(mc_conn, domain1, ip1, pubkey1)
 
+    print 'for %s ip is %s' % (domain1, ip1)
+
     found_in_cache = False
     if with_memcached:
         (found_in_cache, ip2, pubkey2) = check_cache(mc_conn, domain2)
@@ -104,9 +108,11 @@ def make_reply(conn):
         mc_conn.disconnect_all()
         mc_conn = None
 
+    print 'for %s ip is %s' % (domain2, ip2)
     result_packet_len = 17 + len(pubkey1) + len(pubkey2)
     reply = struct.pack('!IBIIHH', result_packet_len, 0, ip1, ip2, len(pubkey1), len(pubkey2))
     reply = reply + pubkey1 + pubkey2
+    print 'reply formed'
     return reply
 
 
@@ -116,8 +122,10 @@ def process_request(conn):
         reply = make_reply(conn)
     except Exception as e:
         print e
+        print 'error formed'
         reply = struct.pack('!IB', 5, 1)
     try:
+        print 'answer sended'
         conn.send(reply)
         conn.close()
     except Exception:
