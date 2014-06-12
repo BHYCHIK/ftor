@@ -44,7 +44,7 @@ static struct conf config = {
 static struct config_parser parser[] = {
     {"listening_port", ct_int, &config.listening_port},
     {"listening_ip_addr", ct_string, config.listening_ip_addr},
-    {"designator_port", ct_int, &config.listening_port},
+    {"designator_port", ct_int, &config.designator_port},
     {"designator_ip_addr", ct_string, config.designator_ip_addr},
     {"resolver_port", ct_int, &config.resolver_port},
     {"resolver_ip_addr", ct_string, config.resolver_ip_addr},
